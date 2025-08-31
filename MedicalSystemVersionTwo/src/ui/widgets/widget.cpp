@@ -15,12 +15,9 @@ Widget::~Widget(){}
 
 
 void Widget::init()
-{   // 只创建一次，不要在这里重复 new
+{
     connectStatus = false;
-
-    if (!myTcpClient) {
-        myTcpClient = new QTcpSocket(this);
-    }
+    if (!myTcpClient) myTcpClient = new QTcpSocket(this);
 
     connect(myTcpClient, &QTcpSocket::connected,
             this,        &Widget::slotConnected);
@@ -29,10 +26,10 @@ void Widget::init()
     connect(myTcpClient, &QTcpSocket::disconnected,
             this,        &Widget::slotDisconnected);
 
-
     connect(myTcpClient, QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::error),
-            this,        &Widget::slotError);}
+            this,        &Widget::slotError);
 
+}
 void Widget::on_connectServerBtn_clicked()
 {
     if (connectStatus) return;
@@ -46,6 +43,22 @@ void Widget::ensureConnected()
         on_connectServerBtn_clicked();
         // 可选：阻塞等待 1 秒（若你允许轻微阻塞）
         // myTcpClient->waitForConnected(1000);
+    }
+}
+
+void Widget::sendJson(const QJsonObject &obj)
+{
+    QJsonDocument doc(obj);
+    QByteArray payload = doc.toJson(QJsonDocument::Compact);
+    payload.append('\n');
+
+    ensureConnected();
+    if (myTcpClient->state() == QAbstractSocket::ConnectedState) {
+        myTcpClient->write(payload);
+        myTcpClient->flush();
+    } else {
+        qDebug() << "[sendJson] not connected, drop:" << payload;
+        // 如需排队可在此扩展
     }
 }
 
@@ -154,6 +167,15 @@ void Widget::sendSearchMedicines(const QString &kw, const QString &type, int rx)
     if (rx==0 || rx==1) obj.insert("is_prescription", rx);
     sendJson(obj);
 }
+void Widget::sendEnsurePendingOrder(int pid){
+    sendJson(QJsonObject{{"type","ensure_pending_order"},{"patient_id",pid}});
+}
+void Widget::sendAddMedicineToOrder(int oid, int mid, int qty){
+    sendJson(QJsonObject{{"type","add_medicine_to_order"},{"order_id",oid},{"medicine_id",mid},{"qty",qty}});
+}
+void Widget::sendAddMedicineToOrderByName(int oid, const QString &name, int qty){
+    sendJson(QJsonObject{{"type","add_medicine_to_order"},{"order_id",oid},{"medicine_name",name},{"qty",qty}});
+}
 
 void Widget::sendGetOrderDetail(int orderId){ sendJson({{"type","get_order_detail"},{"order_id",orderId}}); }
 void Widget::sendCreatePayment(int orderId, const QString &method, double amount){
@@ -253,6 +275,20 @@ void Widget::slotReadyRead()
         } else if (type=="cancel_appointment_result") {
             emit appointmentCanceled(obj.value("success").toBool(),
                                      obj.value("message").toString());
+        } else if (type=="search_medicines_result") {
+            emit medicinesLoaded(obj.value("items").toArray());
+        } else if (type=="ensure_pending_order_result") {
+            emit ensurePendingOrderReady(obj.value("order_id").toInt());
+        } else if (type=="add_medicine_to_order_result") {
+            emit orderItemAdded(obj.value("success").toBool(),
+                                obj.value("message").toString(),
+                                obj.value("order").toObject());
+        } else if (type=="order_detail_result") {
+            emit orderDetailLoaded(obj.value("order").toObject());
+        } else if (type=="payment_result") {
+            emit paymentProcessed(obj.value("success").toBool(),
+                                  obj.value("message").toString(),
+                                  obj.value("order").toObject());
         } else if (type == "register_result") {
             const bool ok = obj.value("success").toBool();
             const QString msg = obj.value("message").toString();

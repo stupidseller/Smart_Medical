@@ -1,5 +1,5 @@
 <RCC>
     <qresource prefix="/">
-        <file>hospital_management.db</file>
+        <file>hospital_app.db</file>
     </qresource>
 </RCC>

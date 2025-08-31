@@ -1,17 +1,13 @@
 #ifndef WIDGET_H
 #define WIDGET_H
 
-#include <QObject>
 #include <QWidget>
 #include <QTcpServer>
+#include <QTcpSocket>
 #include <QHostAddress>
 #include <QNetworkInterface>
-#include <QDebug>
-#include <QMessageBox>
-#include <QTcpSocket>
-#include <QIntValidator>
-#include <QJsonObject>
 #include <QMap>
+#include <QJsonObject>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class Widget; }
@@ -22,13 +18,12 @@ class Widget : public QWidget
     Q_OBJECT
 
 public:
-    Widget(QWidget *parent = nullptr);
+    explicit Widget(QWidget *parent = nullptr);
     ~Widget();
 
-    //槽函数区域
 private slots:
-    void on_startServerBtn_clicked();//启动服务器按钮
-    void slotNewConnection();//新的链接
+    void on_startServerBtn_clicked();
+    void slotNewConnection();
     void slotReadyRead();
     void slotAcceptError(QAbstractSocket::SocketError error);
     void slotDisconnected();
@@ -36,29 +31,37 @@ private slots:
     void slotConnected();
 
 private:
-    // 每个socket一段接收缓冲（按行协议更稳）
-        QMap<QTcpSocket*, QByteArray> recvBuf;
-
-        // 业务分发
-        void processIncoming(QTcpSocket *sock);
-        void handleMessage(QTcpSocket *sock, const QJsonObject &obj);
-        void handleLogin(QTcpSocket *sock, const QJsonObject &obj);
-        void handleRegister(QTcpSocket *sock, const QJsonObject &obj);
-        // --- 业务分发（新增） ---
-        void handleListDepartments(QTcpSocket *sock, const QJsonObject &obj);
-        void handleListDoctors(QTcpSocket *sock, const QJsonObject &obj);
-        void handleListAvailableSlots(QTcpSocket *sock, const QJsonObject &obj);
-        void handleBookAppointment(QTcpSocket *sock, const QJsonObject &obj);
-
-        // 回包工具
-        void sendJson(QTcpSocket *sock, const QJsonObject &obj);
-        void sendError(QTcpSocket *sock, const QString &type, const QString &msg);
-
+    // --- state ---
     Ui::Widget *ui;
-    QTcpServer * myTcpServer = nullptr;//服务器端
-    QTcpSocket *myTcpClient = nullptr;//新接入的客户端
-    QList<QTcpSocket *> clients;//客户端列表   STL再封装  //数组，STL   【vector，list，map，set】
+    QTcpServer *myTcpServer = nullptr;
+    QTcpSocket *myTcpClient = nullptr;
+    QList<QTcpSocket *> clients;
+    QMap<QTcpSocket*, QByteArray> recvBuf;
 
-    void init();//初始化函数
+    void init();
+
+    // --- dispatcher & handlers ---
+    void handleMessage(QTcpSocket *sock, const QJsonObject &obj);
+    void handleLogin(QTcpSocket *sock, const QJsonObject &obj);
+    void handleRegister(QTcpSocket *sock, const QJsonObject &obj);
+
+    // 新增：把cpp里已有实现的函数声明补齐
+    void handleGetPatientProfile(QTcpSocket *sock, const QJsonObject &obj);
+    void handleUpdatePatientProfile(QTcpSocket *sock, const QJsonObject &obj);
+
+    void handleListDepartments(QTcpSocket *sock, const QJsonObject &obj);
+    void handleListDoctors(QTcpSocket *sock, const QJsonObject &obj);
+    void handleListAvailableSlots(QTcpSocket *sock, const QJsonObject &obj);
+    void handleBookAppointment(QTcpSocket *sock, const QJsonObject &obj);
+    void handleSearchMedicines(QTcpSocket *sock, const QJsonObject &obj);
+    void handleEnsurePendingOrder(QTcpSocket *sock, const QJsonObject &obj);
+    void handleAddMedicineToOrder(QTcpSocket *sock, const QJsonObject &obj);
+    void handleGetOrderDetail(QTcpSocket *sock, const QJsonObject &obj);
+    void handleCreatePayment(QTcpSocket *sock, const QJsonObject &obj);
+
+    // --- reply helpers ---
+    void sendJson(QTcpSocket *sock, const QJsonObject &obj);
+    void sendError(QTcpSocket *sock, const QString &type, const QString &msg);
 };
+
 #endif // WIDGET_H

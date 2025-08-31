@@ -1,0 +1,209 @@
+{
+	"BUILD_DIR" : "D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/MedicalSystemVersionTwo_autogen",
+	"CMAKE_BINARY_DIR" : "D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug",
+	"CMAKE_CURRENT_BINARY_DIR" : "D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug",
+	"CMAKE_CURRENT_SOURCE_DIR" : "D:/MyProject/MedicalSystemVersionTwo",
+	"CMAKE_EXECUTABLE" : "D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/bin/cmake.exe",
+	"CMAKE_LIST_FILES" : 
+	[
+		"D:/MyProject/MedicalSystemVersionTwo/CMakeLists.txt",
+		"D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/CMakeFiles/3.27.8/CMakeSystem.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeSystemSpecificInitialize.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Platform/Windows-Initialize.cmake",
+		"D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/CMakeFiles/3.27.8/CMakeCCompiler.cmake",
+		"D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/CMakeFiles/3.27.8/CMakeCXXCompiler.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeSystemSpecificInformation.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeGenericSystem.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeInitializeConfigs.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Platform/Windows.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Platform/WindowsPaths.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeCInformation.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeLanguageInformation.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Compiler/GNU-C.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Compiler/GNU.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Compiler/CMakeCommonCompilerMacros.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Platform/Windows-GNU-C.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Platform/Windows-GNU.cmake",
+		"D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/CMakeFiles/3.27.8/CMakeRCCompiler.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeRCInformation.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Platform/Windows-windres.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Platform/Windows-GNU-C-ABI.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeCommonLanguageInclude.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeCXXInformation.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeLanguageInformation.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Compiler/GNU-CXX.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Compiler/GNU.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Platform/Windows-GNU-CXX.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Platform/Windows-GNU.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/Platform/Windows-GNU-CXX-ABI.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeCommonLanguageInclude.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5/Qt5ConfigVersion.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5/Qt5Config.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5/Qt5ModuleLocation.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Widgets/Qt5WidgetsConfigVersion.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Widgets/Qt5WidgetsConfig.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5GuiConfigVersion.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5GuiConfig.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Core/Qt5CoreConfigVersion.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Core/Qt5CoreConfig.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Core/Qt5CoreConfigExtras.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Core/Qt5CoreConfigExtrasMkspecDir.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Core/Qt5CoreMacros.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeParseArguments.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QGifPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QICNSPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QICOPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QJpegPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QMinimalIntegrationPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QOffscreenIntegrationPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QTgaPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QTiffPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QTuioTouchPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QVirtualKeyboardPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QWbmpPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QWebGLIntegrationPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QWebpPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QWindowsDirect2DIntegrationPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QWindowsIntegrationPlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5Gui_QXdgDesktopPortalThemePlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Gui/Qt5GuiConfigExtras.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Widgets/Qt5Widgets_QWindowsVistaStylePlugin.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Widgets/Qt5WidgetsConfigExtras.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Widgets/Qt5WidgetsMacros.cmake",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeParseArguments.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Network/Qt5NetworkConfigVersion.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Network/Qt5NetworkConfig.cmake",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Network/Qt5Network_QGenericEnginePlugin.cmake"
+	],
+	"CMAKE_SOURCE_DIR" : "D:/MyProject/MedicalSystemVersionTwo",
+	"DEP_FILE" : "",
+	"DEP_FILE_RULE_NAME" : "",
+	"HEADERS" : 
+	[
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/common/login_dialog.h",
+			"MU",
+			"57LLJ53NJH/moc_login_dialog.cpp",
+			null
+		],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/appointment_booking_widget.h",
+			"MU",
+			"CAA3G3FG6K/moc_appointment_booking_widget.cpp",
+			null
+		],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/doctor_list_widget.h",
+			"MU",
+			"CAA3G3FG6K/moc_doctor_list_widget.cpp",
+			null
+		],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/medical_records_widget.h",
+			"MU",
+			"CAA3G3FG6K/moc_medical_records_widget.cpp",
+			null
+		],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/patient_main_window.h",
+			"MU",
+			"CAA3G3FG6K/moc_patient_main_window.cpp",
+			null
+		],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/profile_widget.h",
+			"MU",
+			"CAA3G3FG6K/moc_profile_widget.cpp",
+			null
+		]
+	],
+	"HEADER_EXTENSIONS" : [ "h", "hh", "h++", "hm", "hpp", "hxx", "in", "txx" ],
+	"INCLUDE_DIR" : "D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/MedicalSystemVersionTwo_autogen/include",
+	"MOC_COMPILATION_FILE" : "D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/MedicalSystemVersionTwo_autogen/mocs_compilation.cpp",
+	"MOC_DEFINITIONS" : [ "QT_CORE_LIB", "QT_GUI_LIB", "QT_NETWORK_LIB", "QT_WIDGETS_LIB" ],
+	"MOC_DEPEND_FILTERS" : 
+	[
+		[
+			"Q_PLUGIN_METADATA",
+			"[\n][ \t]*Q_PLUGIN_METADATA[ \t]*\\([^\\)]*FILE[ \t]*\"([^\"]+)\""
+		]
+	],
+	"MOC_INCLUDES" : 
+	[
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/include",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/include/QtWidgets",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/include/QtGui",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/include/QtANGLE",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/include/QtCore",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/mkspecs/win32-g++",
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/include/QtNetwork",
+		"C:/Qt/Qt5.12.8/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include/c++",
+		"C:/Qt/Qt5.12.8/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include/c++/x86_64-w64-mingw32",
+		"C:/Qt/Qt5.12.8/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include/c++/backward",
+		"C:/Qt/Qt5.12.8/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include",
+		"C:/Qt/Qt5.12.8/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include-fixed",
+		"C:/Qt/Qt5.12.8/Tools/mingw730_64/x86_64-w64-mingw32/include"
+	],
+	"MOC_MACRO_NAMES" : [ "Q_OBJECT", "Q_GADGET", "Q_NAMESPACE", "Q_NAMESPACE_EXPORT" ],
+	"MOC_OPTIONS" : [],
+	"MOC_PATH_PREFIX" : false,
+	"MOC_PREDEFS_CMD" : 
+	[
+		"C:/Qt/Qt5.12.8/Tools/mingw730_64/bin/c++.exe",
+		"-std=gnu++1z",
+		"-dM",
+		"-E",
+		"-c",
+		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeCXXCompilerABI.cpp"
+	],
+	"MOC_PREDEFS_FILE" : "D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/MedicalSystemVersionTwo_autogen/moc_predefs.h",
+	"MOC_RELAXED_MODE" : false,
+	"MOC_SKIP" : [],
+	"MULTI_CONFIG" : false,
+	"PARALLEL" : 4,
+	"PARSE_CACHE_FILE" : "D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/CMakeFiles/MedicalSystemVersionTwo_autogen.dir/ParseCache.txt",
+	"QT_MOC_EXECUTABLE" : "C:/Qt/Qt5.12.8/5.12.8/mingw73_64/bin/moc.exe",
+	"QT_UIC_EXECUTABLE" : "C:/Qt/Qt5.12.8/5.12.8/mingw73_64/bin/uic.exe",
+	"QT_VERSION_MAJOR" : 5,
+	"QT_VERSION_MINOR" : 12,
+	"SETTINGS_FILE" : "D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/CMakeFiles/MedicalSystemVersionTwo_autogen.dir/AutogenUsed.txt",
+	"SOURCES" : 
+	[
+		[ "D:/MyProject/MedicalSystemVersionTwo/main.cpp", "MU", null ],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/common/login_dialog.cpp",
+			"MU",
+			null
+		],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/appointment_booking_widget.cpp",
+			"MU",
+			null
+		],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/doctor_list_widget.cpp",
+			"MU",
+			null
+		],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/medical_records_widget.cpp",
+			"MU",
+			null
+		],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/patient_main_window.cpp",
+			"MU",
+			null
+		],
+		[
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/profile_widget.cpp",
+			"MU",
+			null
+		]
+	],
+	"UIC_OPTIONS" : [],
+	"UIC_SEARCH_PATHS" : [],
+	"UIC_SKIP" : [],
+	"UIC_UI_FILES" : [],
+	"VERBOSITY" : 0
+}

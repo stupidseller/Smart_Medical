@@ -50,3 +50,8 @@ add_executable(${PROJECT_NAME}
 
 # 将我们的程序链接到 Qt 的 Widgets 模块
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt5::Widgets Qt5::Network Qt5::Core Qt5::Svg)
+
+target_include_directories(${PROJECT_NAME}
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/ui/widgets
+)

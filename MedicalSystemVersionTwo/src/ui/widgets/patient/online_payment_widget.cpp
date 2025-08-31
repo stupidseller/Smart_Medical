@@ -4,32 +4,46 @@
 #include <QVBoxLayout>
 #include <QFormLayout>
 #include <QLabel>
+#include "widget.h"
 #include <QRadioButton>
 #include <QPushButton>
+#include <QVBoxLayout>
 #include <QScrollArea>
 #include <QFrame>
 #include <QButtonGroup>
 #include <QMessageBox>
 #include <QTimer>
 #include <QDebug>
+#include <QJsonObject>
+#include <QVBoxLayout>
+#include <QTimer>
+#include <QButtonGroup>
+#include <QWidget>
+#include <QJsonArray>
 #include <QPropertyAnimation> // 用于更精细的动画控制
 
 OnlinePaymentWidget::OnlinePaymentWidget(QWidget *parent)
-        : QWidget(parent),
-          orderIdLabel(nullptr), createTimeLabel(nullptr), patientNameLabel(nullptr),
-          departmentLabel(nullptr), doctorNameLabel(nullptr),
-          registrationFeeLabel(nullptr), consultationFeeLabel(nullptr),
-          medicineFeeLabel(nullptr), examinationFeeLabel(nullptr),
-          discountLabel(nullptr), totalAmountLabel(nullptr),
-          wechatPayRadio(nullptr), alipayRadio(nullptr), confirmPaymentButton(nullptr),
-          loadingOverlay(nullptr), loadingSpinner(nullptr), loadingText(nullptr),
-          paymentProcessTimer(nullptr), loadingTextDotCount(0)
+    : OnlinePaymentWidget(nullptr, -1, parent) {}
+
+OnlinePaymentWidget::OnlinePaymentWidget(Widget *api, int patientId, QWidget *parent)
+    : QWidget(parent)
 {
+    m_api = api;
+    m_patientId = patientId;
+    m_orderId = -1;
+
     setObjectName("OnlinePaymentWidget");
     initUI();
     initStyleSheets();
-    loadOrderDetails(); // 默认加载一个模拟订单
+    loadOrderDetails();
+
+    if (m_api) {
+        connect(m_api, &Widget::ensurePendingOrderReady, this, &OnlinePaymentWidget::onEnsureOrderReady);
+        connect(m_api, &Widget::orderDetailLoaded,      this, &OnlinePaymentWidget::onOrderDetailLoaded);
+        connect(m_api, &Widget::paymentProcessed,       this, &OnlinePaymentWidget::onPaymentProcessed);
+    }
 }
+
 
 OnlinePaymentWidget::~OnlinePaymentWidget() {}
 
@@ -165,21 +179,38 @@ QWidget* OnlinePaymentWidget::createOrderInfoPanel(const OrderInfo &order) {
     mainLayout->setContentsMargins(25, 25, 25, 25);
     mainLayout->setSpacing(20);
 
-    // 订单信息
+    // 标题
     QLabel *orderTitle = new QLabel("订单信息");
     orderTitle->setObjectName("panelTitle");
     mainLayout->addWidget(orderTitle);
 
+    // 基本信息
     QFormLayout *orderForm = new QFormLayout();
-    orderForm->setContentsMargins(0, 0, 0, 0);
+    orderForm->setContentsMargins(0,0,0,0);
     orderForm->setSpacing(10);
     orderForm->setLabelAlignment(Qt::AlignLeft);
-    orderForm->addRow("订单号", orderIdLabel = new QLabel(order.orderId));
-    orderForm->addRow("创建时间", createTimeLabel = new QLabel(order.createTime));
-    orderForm->addRow("患者姓名", patientNameLabel = new QLabel(order.patientName));
-    orderForm->addRow("就诊科室", departmentLabel = new QLabel(order.department));
-    orderForm->addRow("医生", doctorNameLabel = new QLabel(order.doctorName));
+    orderForm->addRow("订单号",      orderIdLabel      = new QLabel(order.orderId));
+    orderForm->addRow("创建时间",    createTimeLabel   = new QLabel(order.createTime));
+    orderForm->addRow("患者姓名",    patientNameLabel  = new QLabel(order.patientName));
+    orderForm->addRow("就诊科室",    departmentLabel   = new QLabel(order.department));
+    orderForm->addRow("医生",        doctorNameLabel   = new QLabel(order.doctorName));
     mainLayout->addLayout(orderForm);
+
+    // 订单条目
+    QLabel *itemsTitle = new QLabel("订单条目");
+    itemsTitle->setObjectName("panelTitle");
+    mainLayout->addWidget(itemsTitle);
+
+    QScrollArea *itemsArea = new QScrollArea();
+    itemsArea->setWidgetResizable(true);
+    itemsArea->setFrameShape(QFrame::NoFrame);
+    QWidget *itemsBox = new QWidget();
+    itemsListLayout = new QVBoxLayout(itemsBox);
+    itemsListLayout->setContentsMargins(0,0,0,0);
+    itemsListLayout->setSpacing(6);
+    itemsListLayout->addWidget(new QLabel("（正在加载...）"));
+    itemsArea->setWidget(itemsBox);
+    mainLayout->addWidget(itemsArea);
 
     // 费用明细
     QLabel *feeTitle = new QLabel("费用明细");
@@ -187,14 +218,14 @@ QWidget* OnlinePaymentWidget::createOrderInfoPanel(const OrderInfo &order) {
     mainLayout->addWidget(feeTitle);
 
     QFormLayout *feeForm = new QFormLayout();
-    feeForm->setContentsMargins(0, 0, 0, 0);
+    feeForm->setContentsMargins(0,0,0,0);
     feeForm->setSpacing(10);
     feeForm->setLabelAlignment(Qt::AlignLeft);
-    feeForm->addRow("挂号费", registrationFeeLabel = new QLabel(QString("¥%1").arg(order.feeDetails.value("挂号费", 0.00), 0, 'f', 2)));
-    feeForm->addRow("诊查费", consultationFeeLabel = new QLabel(QString("¥%1").arg(order.feeDetails.value("诊查费", 0.00), 0, 'f', 2)));
-    feeForm->addRow("药品费", medicineFeeLabel = new QLabel(QString("¥%1").arg(order.feeDetails.value("药品费", 0.00), 0, 'f', 2)));
-    feeForm->addRow("检查费", examinationFeeLabel = new QLabel(QString("¥%1").arg(order.feeDetails.value("检查费", 0.00), 0, 'f', 2)));
-    feeForm->addRow("优惠折扣", discountLabel = new QLabel(QString("¥%1").arg(order.discount, 0, 'f', 2)));
+    feeForm->addRow("挂号费",  registrationFeeLabel = new QLabel(QString("¥%1").arg(order.feeDetails.value("挂号费",0.0),0,'f',2)));
+    feeForm->addRow("诊查费",  consultationFeeLabel = new QLabel(QString("¥%1").arg(order.feeDetails.value("诊查费",0.0),0,'f',2)));
+    feeForm->addRow("药品费",  medicineFeeLabel     = new QLabel(QString("¥%1").arg(order.feeDetails.value("药品费",0.0),0,'f',2)));
+    feeForm->addRow("检查费",  examinationFeeLabel  = new QLabel(QString("¥%1").arg(order.feeDetails.value("检查费",0.0),0,'f',2)));
+    feeForm->addRow("优惠折扣", discountLabel       = new QLabel(QString("¥%1").arg(order.discount,0,'f',2)));
     mainLayout->addLayout(feeForm);
 
     // 总计
@@ -204,13 +235,12 @@ QWidget* OnlinePaymentWidget::createOrderInfoPanel(const OrderInfo &order) {
     totalLayout->addStretch();
     QLabel *totalText = new QLabel("应付总额");
     totalText->setObjectName("totalText");
-    totalAmountLabel = new QLabel(QString("¥%1").arg(order.totalAmount, 0, 'f', 2));
+    totalAmountLabel = new QLabel(QString("¥%1").arg(order.totalAmount,0,'f',2));
     totalAmountLabel->setObjectName("totalAmountValue");
     totalLayout->addWidget(totalText);
     totalLayout->addWidget(totalAmountLabel);
-    totalLayout->addStretch(); // 使其居中
-
-    mainLayout->addStretch(); // 推到顶部
+    totalLayout->addStretch();
+    mainLayout->addStretch();
     mainLayout->addWidget(totalAmountBox);
 
     return panel;
@@ -286,31 +316,59 @@ QWidget* OnlinePaymentWidget::createPaymentMethodPanel() {
     return panel;
 }
 
+void OnlinePaymentWidget::onOrderDetailLoaded(const QJsonObject &order)
+{
+    if (order.isEmpty()) return; // 可能订单被删空
+    m_orderId = order.value("order_id").toInt(m_orderId);
+
+    // 基本信息
+    orderIdLabel->setText(QString::number(m_orderId));
+    createTimeLabel->setText(order.value("created_at").toString());
+    patientNameLabel->setText("当前用户"); // 如需可从上层传
+    // 费用合计
+    const double discount = order.value("discount").toDouble();
+    const double total = order.value("total_amount").toDouble();
+    discountLabel->setText(QString("¥%1").arg(discount,0,'f',2));
+    totalAmountLabel->setText(QString("¥%1").arg(total,0,'f',2));
+    confirmPaymentButton->setText(QString("确认支付 ¥%1").arg(total,0,'f',2));
+
+    // 清空条目列表并填充
+    while (itemsListLayout && itemsListLayout->count()>0) {
+        QLayoutItem *it = itemsListLayout->takeAt(0);
+        if (it->widget()) delete it->widget();
+        delete it;
+    }
+    const auto items = order.value("items").toArray();
+    for (const auto &v : items) {
+        const auto o = v.toObject();
+        const QString line = QString("%1   ¥%2")
+            .arg(o.value("item_name").toString())
+            .arg(o.value("amount").toDouble(), 0, 'f', 2);
+        QLabel *row = new QLabel(line);
+        itemsListLayout->addWidget(row);
+    }
+    if (items.isEmpty()) {
+        itemsListLayout->addWidget(new QLabel("（空空如也，去“药品搜索”加入购买单吧）"));
+    }
+}
 
 // --- 槽函数实现 ---
 void OnlinePaymentWidget::onConfirmPaymentClicked() {
-    // 显示加载动画
+    // UI loading（你的原逻辑保留）
     loadingOverlay->show();
-    confirmPaymentButton->setEnabled(false); // 禁用按钮防止重复点击
-    loadingText->setText("支付处理中，请稍候."); // 初始化文本
+    confirmPaymentButton->setEnabled(false);
+    loadingText->setText("支付处理中...");
     loadingTextDotCount = 0;
-    paymentProcessTimer->start(500); // 启动定时器，每500ms更新一次点
+    paymentProcessTimer->start(500);
 
-    int selectedMethod = -1;
-    if (wechatPayRadio->isChecked()) {
-        selectedMethod = 0; // 微信
-    } else if (alipayRadio->isChecked()) {
-        selectedMethod = 1; // 支付宝
+    if (!m_api || m_orderId<=0) {
+        QMessageBox::warning(this, "提示", "没有待支付订单");
+        loadingOverlay->hide(); confirmPaymentButton->setEnabled(true); paymentProcessTimer->stop();
+        return;
     }
-
-    if (selectedMethod != -1) {
-        processPayment(selectedMethod); // 调用模拟支付处理
-    } else {
-        QMessageBox::warning(this, "提示", "请选择一种支付方式！");
-        loadingOverlay->hide();
-        confirmPaymentButton->setEnabled(true);
-        paymentProcessTimer->stop();
-    }
+    const double amount = totalAmountLabel->text().remove('¥').toDouble();
+    const QString method = wechatPayRadio->isChecked() ? "wechat" : "alipay";
+    m_api->sendCreatePayment(m_orderId, method, amount);
 }
 
 void OnlinePaymentWidget::updatePaymentStatusText() {
@@ -318,7 +376,26 @@ void OnlinePaymentWidget::updatePaymentStatusText() {
     QString dots(loadingTextDotCount, '.');
     loadingText->setText(QString("支付处理中，请稍候%1").arg(dots));
 }
+void OnlinePaymentWidget::onEnsureOrderReady(int orderId) {
+    m_orderId = orderId;
+    if (m_api) m_api->sendGetOrderDetail(orderId);
+}
 
+void OnlinePaymentWidget::onPaymentProcessed(bool ok, const QString &msg, const QJsonObject &)
+{
+    loadingOverlay->hide();
+    confirmPaymentButton->setEnabled(true);
+    paymentProcessTimer->stop();
+
+    if (!ok) {
+        QMessageBox::warning(this, "支付失败", msg.isEmpty()? "请稍后再试" : msg);
+        return;
+    }
+    // 成功：服务端已删除订单，这里给出成功提示并返回
+    QMessageBox::information(this, "支付成功", "支付成功，购买单已清空。");
+    emit paymentCompleted();
+    emit backRequested(); // 返回首页
+}
 
 void OnlinePaymentWidget::onPaymentProcessFinished() {
     loadingOverlay->hide(); // 隐藏加载动画
@@ -379,8 +456,18 @@ void OnlinePaymentWidget::initStyleSheets() {
             border-color: #3182CE; /* 鼠标悬停蓝色边框 */
         }
         QRadioButton::indicator { /* 隐藏默认radio按钮指示器 */
-            width: 0px;
-            height: 0px;
+            width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            border: 2px solid #CBD5E0;
+            background: white;
+            margin-right: 8px;
+        }
+        QRadioButton::indicator:checked {
+            border: 6px solid #3182CE;   /* 视觉上是个实心圆 */
+        }
+        QRadioButton::indicator:unchecked {
+            border: 2px solid #CBD5E0;
         }
         QRadioButton { /* 占用空间 */
             width: 20px;

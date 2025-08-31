@@ -316,9 +316,9 @@ void AppointmentBookingWidget::initStyleSheets() {
         }
         .doctorSpecialty { font-size: 14px; color: #4A5568; }
         #slotWidget { background-color: #F7FAFC; border: 1px solid #E2E8F0; border-radius: 8px; }
-        .slotDate { font-size: 14px; font-weight: bold; color: #2D3748; }
-        .slotRemaining { font-size: 13px; color: #4A5568; }
-        .slotRemaining[full="true"] { color: #E53E3E; font-weight: bold; }
+        QLabel#slotDate       { font-size: 14px; font-weight: bold; color: #2D3748; }
+        QLabel#slotRemaining  { font-size: 13px; color: #4A5568; }
+        QLabel#slotRemaining[full="true"] { color: #E53E3E; font-weight: bold; }
         #bookNowButton { background-color: #3182CE; color: white; border: none; border-radius: 8px; padding: 8px 16px; font-size: 14px; }
         #bookNowButton:hover { background-color: #2B6CB0; }
         #detailsButton { background-color: transparent; color: #3182CE; border: 1px solid #3182CE; border-radius: 8px; padding: 8px 16px; font-size: 14px; }

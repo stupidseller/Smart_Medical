@@ -1,0 +1,4 @@
+D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/CMakeFiles/MedicalSystemVersionTwo.dir
+D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/CMakeFiles/edit_cache.dir
+D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/CMakeFiles/MedicalSystemVersionTwo_autogen.dir
