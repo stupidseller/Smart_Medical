@@ -1,38 +1,63 @@
-#include "login_dialog.h"
-#include <QStackedWidget>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QComboBox>
-#include <QLabel>
-#include <QGridLayout>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QFormLayout>
-#include <QMessageBox>
-#include <QStyle>
-#include <QTimer>
+/**
+ * @file login_dialog.cpp
+ * @brief 登录对话框的实现文件
+ * 
+ * 这个文件实现了医疗系统的登录和注册界面，包括：
+ * - 登录界面：用户名/邮箱、密码、角色选择
+ * - 注册界面：用户类型选择、基本信息填写、医生科室选择
+ * - 表单验证
+ * - 界面样式设置
+ */
 
+#include "login_dialog.h"
+#include <QStackedWidget>    // 用于切换登录/注册页面
+#include <QLineEdit>         // 文本输入框
+#include <QPushButton>       // 按钮控件
+#include <QComboBox>         // 下拉选择框
+#include <QLabel>            // 标签控件
+#include <QGridLayout>       // 网格布局
+#include <QVBoxLayout>       // 垂直布局
+#include <QHBoxLayout>       // 水平布局
+#include <QFormLayout>       // 表单布局
+#include <QMessageBox>       // 消息框
+#include <QStyle>            // 样式相关
+#include <QTimer>            // 定时器
+
+/**
+ * @brief 构造函数
+ * @param parent 父窗口指针
+ */
 LoginDialog::LoginDialog(QWidget *parent)
         : QDialog(parent)
 {
-    initLayout();
-    initStyleSheets();
-    onLoginTabClicked();
+    initLayout();           // 初始化界面布局
+    initStyleSheets();      // 初始化样式表
+    onLoginTabClicked();    // 默认显示登录页面
 }
 
 LoginDialog::~LoginDialog() {}
 
+/**
+ * @brief 初始化对话框布局
+ * 
+ * 创建主布局，包括：
+ * - 设置窗口标题和大小
+ * - 创建水平布局
+ * - 添加左侧面板（系统标题和说明）
+ * - 添加右侧面板（登录注册界面）
+ */
 void LoginDialog::initLayout() {
     setWindowTitle("智能医疗系统");
-    resize(900, 600);
-    setMinimumSize(900, 600);
-    setObjectName("LoginDialog");
+    resize(900, 600);                    // 设置窗口初始大小
+    setMinimumSize(900, 600);            // 设置最小大小限制
+    setObjectName("LoginDialog");        // 设置对象名，用于样式表
 
+    // 创建主水平布局
     QHBoxLayout *mainLayout = new QHBoxLayout(this);
-    mainLayout->setContentsMargins(0, 0, 0, 0);
-    mainLayout->setSpacing(0);
-    mainLayout->addWidget(createLeftPanel());
-    mainLayout->addWidget(createRightPanel());
+    mainLayout->setContentsMargins(0, 0, 0, 0);  // 设置边距为0
+    mainLayout->setSpacing(0);                    // 设置部件间距为0
+    mainLayout->addWidget(createLeftPanel());     // 添加左侧面板
+    mainLayout->addWidget(createRightPanel());    // 添加右侧面板
 }
 
 QWidget* LoginDialog::createLeftPanel() {
@@ -201,14 +226,35 @@ QWidget* LoginDialog::createRegisterWidget() {
     return widget;
 }
 
+/**
+ * @brief 处理注册按钮点击事件
+ * 
+ * 执行注册表单的验证，包括：
+ * 1. 必填项验证
+ * 2. 邮箱格式验证
+ * 3. 密码一致性验证
+ * 4. 医生科室选择验证
+ */
 void LoginDialog::onRegisterAttempt() {
-    // 前端验证
+    // 验证必填项
     if (registerUserLineEdit->text().isEmpty() ||
             registerEmailLineEdit->text().isEmpty() ||
         registerPasswordLineEdit->text().isEmpty()) {
         QMessageBox::warning(this, "注册失败", "用户名、邮箱和密码均为必填项。");
         return;
     }
+
+    // 获取并验证邮箱格式
+    const QString email = registerEmailLineEdit->text().trimmed();
+    // 检查邮箱是否包含@和.，且@不在开头或结尾，并且只能有一个@
+    if (!email.contains("@") || !email.contains(".") || 
+        email.indexOf("@") == 0 || 
+        email.indexOf("@") == email.length() - 1 ||
+        email.count("@") > 1) {
+        QMessageBox::warning(this, "注册失败", "请输入正确的邮箱格式（例如：example@domain.com）");
+        return;
+    }
+
     if (registerPasswordLineEdit->text() != registerConfirmPasswordLineEdit->text()) {
         QMessageBox::warning(this, "注册失败", "两次输入的密码不一致。");
         return;
@@ -220,9 +266,8 @@ void LoginDialog::onRegisterAttempt() {
     }
 
     const QString username   = registerUserLineEdit->text().trimmed();
-        const QString email      = registerEmailLineEdit->text().trimmed();
-        const QString password   = registerPasswordLineEdit->text();
-        const QString userType   = selectedUserType; // "patient" / "doctor"
+    const QString password   = registerPasswordLineEdit->text();
+    const QString userType   = selectedUserType; // "patient" / "doctor"
         const QString department = (userType == "doctor")
                                    ? registerDepartmentComboBox->currentText().trimmed()
                                    : QString();
@@ -248,27 +293,80 @@ void LoginDialog::onRegisterTabClicked() {
     style()->unpolish(registerTabButton); style()->polish(registerTabButton);
 }
 
+/**
+ * @brief 处理选择患者类型的点击事件
+ * 
+ * 当用户选择注册为患者时：
+ * 1. 设置用户类型为patient
+ * 2. 更新按钮样式
+ * 3. 隐藏科室选择相关控件
+ */
 void LoginDialog::onPatientTypeClicked() {
     selectedUserType = "patient";
+    // 更新按钮选中状态
     patientTypeButton->setProperty("selected", true);
     doctorTypeButton->setProperty("selected", false);
+    // 刷新按钮样式
     style()->unpolish(patientTypeButton); style()->polish(patientTypeButton);
     style()->unpolish(doctorTypeButton); style()->polish(doctorTypeButton);
+    // 隐藏科室选择
     departmentLabel->setVisible(false);
     registerDepartmentComboBox->setVisible(false);
 }
 
+/**
+ * @brief 处理选择医生类型的点击事件
+ * 
+ * 当用户选择注册为医生时：
+ * 1. 设置用户类型为doctor
+ * 2. 更新按钮样式
+ * 3. 显示科室选择相关控件
+ */
 void LoginDialog::onDoctorTypeClicked() {
     selectedUserType = "doctor";
+    // 更新按钮选中状态
     patientTypeButton->setProperty("selected", false);
     doctorTypeButton->setProperty("selected", true);
+    // 刷新按钮样式
     style()->unpolish(patientTypeButton); style()->polish(patientTypeButton);
     style()->unpolish(doctorTypeButton); style()->polish(doctorTypeButton);
+    // 显示科室选择
     departmentLabel->setVisible(true);
     registerDepartmentComboBox->setVisible(true);
 }
 
+/**
+ * @brief 处理登录按钮点击事件
+ * 
+ * 执行登录表单的验证和处理：
+ * 1. 验证所有必填字段
+ * 2. 发送登录请求信号
+ */
+/**
+ * @brief 清空所有输入框的内容
+ * 
+ * 清空登录和注册表单中的所有输入内容，包括：
+ * - 用户名/邮箱输入框
+ * - 密码输入框
+ * - 确认密码输入框
+ * - 下拉选择框重置为默认选项
+ */
+void LoginDialog::clearInputs() {
+    // 清空登录表单
+    loginUserLineEdit->clear();
+    loginPasswordLineEdit->clear();
+    loginRoleComboBox->setCurrentIndex(0);
+    
+    // 清空注册表单
+    registerUserLineEdit->clear();
+    registerEmailLineEdit->clear();
+    registerPasswordLineEdit->clear();
+    registerConfirmPasswordLineEdit->clear();
+    registerDepartmentComboBox->setCurrentIndex(0);
+}
+
 void LoginDialog::onLoginAttempt() {
+    // 验证所有字段是否已填写
     if (loginUserLineEdit->text().isEmpty() ||
         loginPasswordLineEdit->text().isEmpty() ||
         loginRoleComboBox->currentIndex() == 0) {
@@ -282,9 +380,24 @@ void LoginDialog::onLoginAttempt() {
 
     emit loginRequested(username, password, role);
     //QMessageBox::information(this, "登录请求已发送", "已向服务器发送登录请求，请稍候查看结果。");
+    
+    // 登录请求发送后清空输入框
+    clearInputs();
 }
 
+/**
+ * @brief 初始化界面样式表
+ * 
+ * 设置整个登录对话框的样式，包括：
+ * - 整体配色方案
+ * - 按钮样式
+ * - 输入框样式
+ * - 下拉框样式
+ * - 标签样式
+ * - 各种状态下的样式变化
+ */
 void LoginDialog::initStyleSheets() {
+    // 使用Qt Raw String语法定义样式表
     QString qss = R"(
         #LoginDialog { background-color: #F7FAFC; }
         #leftPanel { background-color: #2C5282; }

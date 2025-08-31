@@ -42,6 +42,7 @@ private slots:
 private:
     void initLayout();
     void initStyleSheets();
+    void clearInputs();          // 清空所有输入框的内容
     QWidget* createLeftPanel();
     QWidget* createRightPanel();
     QWidget* createLoginWidget();
