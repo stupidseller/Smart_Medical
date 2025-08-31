@@ -1,3 +1,0 @@
-# Hashes of file build rules.
-b69fc1a0de257d47a76851acd30c8514 CMakeFiles/MedicalSystem_autogen
-279835bcd708e4a271ebe6c10b2fd7d7 MedicalSystem_autogen/WLHO7BLXI7/qrc_qml.cpp

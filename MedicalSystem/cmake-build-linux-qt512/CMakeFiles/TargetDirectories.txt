@@ -1,4 +1,0 @@
-/mnt/hgfs/SmartMedicalProject/MedicalSystem/cmake-build-linux-qt512/CMakeFiles/MedicalSystem.dir
-/mnt/hgfs/SmartMedicalProject/MedicalSystem/cmake-build-linux-qt512/CMakeFiles/edit_cache.dir
-/mnt/hgfs/SmartMedicalProject/MedicalSystem/cmake-build-linux-qt512/CMakeFiles/rebuild_cache.dir
-/mnt/hgfs/SmartMedicalProject/MedicalSystem/cmake-build-linux-qt512/CMakeFiles/MedicalSystem_autogen.dir
