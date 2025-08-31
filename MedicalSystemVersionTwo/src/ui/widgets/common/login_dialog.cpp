@@ -10,9 +10,6 @@
 #include <QFormLayout>
 #include <QMessageBox>
 #include <QStyle>
-#include <QNetworkReply>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QTimer>
 
 LoginDialog::LoginDialog(QWidget *parent)
@@ -20,10 +17,6 @@ LoginDialog::LoginDialog(QWidget *parent)
 {
     initLayout();
     initStyleSheets();
-
-    networkManager = new QNetworkAccessManager(this);
-    connect(networkManager, &QNetworkAccessManager::finished, this, &LoginDialog::onRegistrationReply);
-
     onLoginTabClicked();
 }
 
@@ -31,17 +24,13 @@ LoginDialog::~LoginDialog() {}
 
 void LoginDialog::initLayout() {
     setWindowTitle("智能医疗系统");
-
-    // 改为设置最小尺寸和初始尺寸，以获得更好的缩放灵活性
     resize(900, 600);
     setMinimumSize(900, 600);
-
     setObjectName("LoginDialog");
 
     QHBoxLayout *mainLayout = new QHBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
-
     mainLayout->addWidget(createLeftPanel());
     mainLayout->addWidget(createRightPanel());
 }
@@ -95,7 +84,6 @@ QWidget* LoginDialog::createRightPanel() {
 
     connect(loginTabButton, &QPushButton::clicked, this, &LoginDialog::onLoginTabClicked);
     connect(registerTabButton, &QPushButton::clicked, this, &LoginDialog::onRegisterTabClicked);
-
     return panel;
 }
 
@@ -162,7 +150,6 @@ QWidget* LoginDialog::createRegisterWidget() {
     registerUserLineEdit->setPlaceholderText("请设置用户名");
     registerEmailLineEdit = new QLineEdit();
     registerEmailLineEdit->setPlaceholderText("请输入邮箱");
-
     registerPasswordLineEdit = new QLineEdit();
     registerPasswordLineEdit->setPlaceholderText("请设置密码 (至少6位)");
     registerPasswordLineEdit->setEchoMode(QLineEdit::Password);
@@ -193,6 +180,7 @@ QWidget* LoginDialog::createRegisterWidget() {
     QPushButton *registerButton = new QPushButton("注册");
     registerButton->setObjectName("primaryButton");
     connect(registerButton, &QPushButton::clicked, this, &LoginDialog::onRegisterAttempt);
+
     QPushButton *backToLoginButton = new QPushButton("已有账号? 返回登录");
     backToLoginButton->setObjectName("linkButton");
     connect(backToLoginButton, &QPushButton::clicked, this, &LoginDialog::onLoginTabClicked);
@@ -215,7 +203,8 @@ QWidget* LoginDialog::createRegisterWidget() {
 
 void LoginDialog::onRegisterAttempt() {
     // 前端验证
-    if (registerUserLineEdit->text().isEmpty() || registerEmailLineEdit->text().isEmpty() ||
+    if (registerUserLineEdit->text().isEmpty() ||
+            registerEmailLineEdit->text().isEmpty() ||
         registerPasswordLineEdit->text().isEmpty()) {
         QMessageBox::warning(this, "注册失败", "用户名、邮箱和密码均为必填项。");
         return;
@@ -230,46 +219,18 @@ void LoginDialog::onRegisterAttempt() {
         return;
     }
 
-    // 准备发送给后端的数据 (JSON)
-    QJsonObject jsonObject;
-    jsonObject["username"] = registerUserLineEdit->text();
-    jsonObject["email"] = registerEmailLineEdit->text();
-    jsonObject["password"] = registerPasswordLineEdit->text();
-    jsonObject["user_type"] = selectedUserType;
+    const QString username   = registerUserLineEdit->text().trimmed();
+        const QString email      = registerEmailLineEdit->text().trimmed();
+        const QString password   = registerPasswordLineEdit->text();
+        const QString userType   = selectedUserType; // "patient" / "doctor"
+        const QString department = (userType == "doctor")
+                                   ? registerDepartmentComboBox->currentText().trimmed()
+                                   : QString();
 
-    if (selectedUserType == "doctor") {
-        jsonObject["department"] = registerDepartmentComboBox->currentText().trimmed();
-    }
-
-    QJsonDocument jsonDoc(jsonObject);
-
-    // 创建并发送网络请求
-    QNetworkRequest request(QUrl("http://your-server.com/api/register"));
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    networkManager->post(request, jsonDoc.toJson());
+    emit registerRequested(username, email, password, userType, department);
+    //QMessageBox::information(this, "注册请求已发送", "已向服务器发送注册请求，请稍候查看结果。");
 }
 
-void LoginDialog::onRegistrationReply(QNetworkReply *reply) {
-    if (reply->error() != QNetworkReply::NoError) {
-        QMessageBox::critical(this, "网络错误", "无法连接到服务器：" + reply->errorString());
-        reply->deleteLater();
-        return;
-    }
-
-    QByteArray responseData = reply->readAll();
-    QJsonDocument jsonDoc = QJsonDocument::fromJson(responseData);
-    QJsonObject jsonObj = jsonDoc.object();
-
-    if (jsonObj["success"].toBool()) {
-        QMessageBox::information(this, "注册成功", "您的账户已创建成功！");
-        onLoginTabClicked();
-    } else {
-        QString errorMessage = jsonObj["error"].toString("未知的注册错误。");
-        QMessageBox::warning(this, "注册失败", errorMessage);
-    }
-
-    reply->deleteLater();
-}
 
 void LoginDialog::onLoginTabClicked() {
     mainStackedWidget->setCurrentIndex(0);
@@ -293,8 +254,6 @@ void LoginDialog::onPatientTypeClicked() {
     doctorTypeButton->setProperty("selected", false);
     style()->unpolish(patientTypeButton); style()->polish(patientTypeButton);
     style()->unpolish(doctorTypeButton); style()->polish(doctorTypeButton);
-
-    // 隐藏科室选项
     departmentLabel->setVisible(false);
     registerDepartmentComboBox->setVisible(false);
 }
@@ -305,20 +264,24 @@ void LoginDialog::onDoctorTypeClicked() {
     doctorTypeButton->setProperty("selected", true);
     style()->unpolish(patientTypeButton); style()->polish(patientTypeButton);
     style()->unpolish(doctorTypeButton); style()->polish(doctorTypeButton);
-
-    // 显示科室选项
     departmentLabel->setVisible(true);
     registerDepartmentComboBox->setVisible(true);
 }
 
 void LoginDialog::onLoginAttempt() {
-    if (loginUserLineEdit->text().isEmpty() || loginPasswordLineEdit->text().isEmpty() || loginRoleComboBox->currentIndex() == 0) {
+    if (loginUserLineEdit->text().isEmpty() ||
+        loginPasswordLineEdit->text().isEmpty() ||
+        loginRoleComboBox->currentIndex() == 0) {
         QMessageBox::warning(this, "登录失败", "所有字段均为必填项。");
         return;
     }
-    // TODO: Add backend login logic here
-    QMessageBox::information(this, "登录成功", "欢迎回来！");
-    accept();
+
+    const QString username = loginUserLineEdit->text().trimmed();
+    const QString password = loginPasswordLineEdit->text();
+    const QString role     = loginRoleComboBox->currentText().trimmed(); // "患者"/"医生"（你的下拉文本）
+
+    emit loginRequested(username, password, role);
+    //QMessageBox::information(this, "登录请求已发送", "已向服务器发送登录请求，请稍候查看结果。");
 }
 
 void LoginDialog::initStyleSheets() {

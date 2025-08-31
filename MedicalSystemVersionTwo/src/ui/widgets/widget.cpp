@@ -23,7 +23,7 @@ void Widget::init()
     }
 
     connect(myTcpClient, &QTcpSocket::connected,
-                this,        &Widget::slotConnected);
+            this,        &Widget::slotConnected);
     connect(myTcpClient, &QTcpSocket::readyRead,
             this,        &Widget::slotReadyRead);
     connect(myTcpClient, &QTcpSocket::disconnected,
@@ -31,10 +31,8 @@ void Widget::init()
 
 
     connect(myTcpClient, QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::error),
-                this,        &Widget::slotError);}
+            this,        &Widget::slotError);}
 
-
-// 当点击连接到服务器按钮时
 void Widget::on_connectServerBtn_clicked()
 {
     if (connectStatus) return;
@@ -112,14 +110,64 @@ void Widget::sendRegisterData(const QString &username,
     }
 }
 
+void Widget::sendListDepartments() {
+    sendJson(QJsonObject{{"type","list_departments"}});
+}
+void Widget::sendListDoctors(int dep, const QString &kw, int online, int limit, int offset,
+                             const QString &orderBy, const QString &sort) {
+    QJsonObject obj{{"type","list_doctors"},{"limit",limit},{"offset",offset},{"order_by",orderBy},{"sort",sort}};
+    if (dep>0) obj.insert("department_id", dep);
+    if (!kw.trimmed().isEmpty()) obj.insert("keyword", kw.trimmed());
+    if (online==0 || online==1) obj.insert("is_online", online);
+    sendJson(obj);
+}
+void Widget::sendListAvailableSlots(int doctorId, const QString &start, const QString &end) {
+    QJsonObject obj{{"type","list_available_slots"}};
+    if (doctorId>0) obj.insert("doctor_id", doctorId);
+    if (!start.isEmpty()) obj.insert("start", start);
+    if (!end.isEmpty())   obj.insert("end", end);
+    sendJson(obj);
+}
+void Widget::sendBookAppointment(int pid, int did, int slotId, const QString &desc) {
+    sendJson(QJsonObject{{"type","book_appointment"},{"patient_id",pid},{"doctor_id",did},
+                         {"slot_id",slotId},{"disease_description",desc}});
+}
+void Widget::sendGetPatientProfile(int pid){
+    sendJson(QJsonObject{{"type","get_patient_profile"},{"patient_id",pid}});
+}
+void Widget::sendUpdatePatientProfile(const QJsonObject &patch){
+    QJsonObject obj = patch; obj.insert("type","update_patient_profile"); sendJson(obj);
+}
+void Widget::sendGetDoctorContacts(int pid){ sendJson({{"type","get_doctor_contacts"},{"patient_id",pid}}); }
+void Widget::sendGetChatHistory(int pid,int did){ sendJson({{"type","get_chat_history"},{"patient_id",pid},{"doctor_id",did}}); }
+void Widget::sendSendMessage(int pid,int did,const QString &c){ sendJson({{"type","send_message"},{"patient_id",pid},{"doctor_id",did},{"content",c}}); }
+
+void Widget::sendGetHealthQuestions(){ sendJson({{"type","get_health_questions"}}); }
+void Widget::sendSubmitHealthAssessment(int pid, const QJsonArray &answers){
+    sendJson(QJsonObject{{"type","submit_health_assessment"},{"patient_id",pid},{"answers",answers}});
+}
+
+void Widget::sendSearchMedicines(const QString &kw, const QString &type, int rx){
+    QJsonObject obj{{"type","search_medicines"}};
+    if (!kw.trimmed().isEmpty()) obj.insert("keyword", kw.trimmed());
+    if (!type.isEmpty()) obj.insert("type", type);                // "处方药"/"非处方药"
+    if (rx==0 || rx==1) obj.insert("is_prescription", rx);
+    sendJson(obj);
+}
+
+void Widget::sendGetOrderDetail(int orderId){ sendJson({{"type","get_order_detail"},{"order_id",orderId}}); }
+void Widget::sendCreatePayment(int orderId, const QString &method, double amount){
+    sendJson({{"type","create_payment"},{"order_id",orderId},{"method",method},{"amount",amount}});
+}
+
+void Widget::sendListPatientAppointments(int pid){ sendJson({{"type","list_patient_appointments"},{"patient_id",pid}}); }
+void Widget::sendCancelAppointment(int apptId){ sendJson({{"type","cancel_appointment"},{"appointment_id",apptId}}); }
 
 void Widget::slotConnected()
 {
     connectStatus = true;
     qDebug() << "Connected to" << myTcpClient->peerAddress().toString()
-             << ":" << myTcpClient->peerPort();
-}
-
+             << ":" << myTcpClient->peerPort();}
 //读取服务器发送的信息
 void Widget::slotReadyRead()
 {
@@ -136,19 +184,78 @@ void Widget::slotReadyRead()
 
         QJsonObject obj = doc.object();
         const QString type = obj.value("type").toString();
-        const bool ok = obj.value("success").toBool();
-        const QString msg = obj.value("message").toString();
 
-        if (type == "login_result") {
+        if (type=="login_result") {
+            const bool ok = obj.value("success").toBool();
+            const QString msg = obj.value("message").toString();
             if (ok) {
-                const int userId       = obj.value("user_id").toInt();
-                const QString name     = obj.value("name").toString();
-                const QString userType = obj.value("user_type").toString();
-                emit loginSucceeded(msg.isEmpty() ? "登录成功" : msg);
-                emit loginSucceededDetail(userId, name, userType);
-              }
-            else    emit loginFailed   (msg.isEmpty() ? "用户名或密码错误" : msg);
+                const QString role = obj.value("role").toString();
+                int id = role=="patient" ? obj.value("patient_id").toInt()
+                                         : obj.value("doctor_id").toInt();
+                const QString name = obj.value("name").toString();
+                emit loginSucceeded(msg.isEmpty()?"登录成功":msg);
+                emit loginSucceededDetail(id, name, role);
+            } else emit loginFailed(msg.isEmpty()?"登录失败":msg);
+
+        } else if (type=="list_departments_result") {
+            emit departmentsListed(obj.value("items").toArray());
+
+        } else if (type=="list_doctors_result") {
+            emit doctorsListed(obj.value("total").toInt(), obj.value("items").toArray());
+
+        } else if (type=="list_available_slots_result") {
+            emit availableSlotsListed(obj.value("items").toArray());
+
+        } else if (type=="book_appointment_result") {
+            emit appointmentBooked(obj.value("success").toBool(),
+                                   obj.value("appointment").toObject(),
+                                   obj.value("message").toString());
+
+        } else if (type=="patient_profile_result") {
+            emit patientProfileLoaded(obj.value("profile").toObject());
+
+        } else if (type=="update_patient_profile_result") {
+            emit patientProfileSaved(obj.value("success").toBool(),
+                                     obj.value("message").toString());
+
+        } else if (type=="doctor_contacts_result") {
+            emit doctorContactsLoaded(obj.value("items").toArray());
+
+        } else if (type=="chat_history_result") {
+            emit chatHistoryLoaded(obj.value("doctor_id").toInt(),
+                                   obj.value("messages").toArray());
+
+        } else if (type=="send_message_result") {
+            emit messageSent(obj.value("success").toBool(),
+                             obj.value("message").toString());
+
+        } else if (type=="health_questions_result") {
+            emit healthQuestionsLoaded(obj.value("questions").toArray(),
+                                       obj.value("options").toArray());
+
+        } else if (type=="health_assessment_result") {
+            emit healthAssessmentDone(obj.value("result").toObject());
+
+        } else if (type=="search_medicines_result") {
+            emit medicinesLoaded(obj.value("items").toArray());
+
+        } else if (type=="order_detail_result") {
+            emit orderDetailLoaded(obj.value("order").toObject());
+
+        } else if (type=="payment_result") {
+            emit paymentProcessed(obj.value("success").toBool(),
+                                  obj.value("message").toString(),
+                                  obj.value("order").toObject());
+
+        } else if (type=="patient_appointments_result") {
+            emit patientAppointmentsLoaded(obj.value("items").toArray());
+
+        } else if (type=="cancel_appointment_result") {
+            emit appointmentCanceled(obj.value("success").toBool(),
+                                     obj.value("message").toString());
         } else if (type == "register_result") {
+            const bool ok = obj.value("success").toBool();
+            const QString msg = obj.value("message").toString();
             if (ok) emit registerSucceeded(msg.isEmpty() ? "注册成功" : msg);
             else    emit registerFailed   (msg.isEmpty() ? "注册失败" : msg);
         } else {
@@ -156,14 +263,11 @@ void Widget::slotReadyRead()
         }
     }
 }
-
 void Widget::slotDisconnected()
 {
     qDebug() << "Disconnected";
     connectStatus = false;
 }
-
-
 void Widget::slotError(QAbstractSocket::SocketError error)
 {
     qDebug() << "socket error:" << error << myTcpClient->errorString();

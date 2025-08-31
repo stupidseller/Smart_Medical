@@ -1,7 +1,7 @@
 #ifndef PATIENT_MAIN_WINDOW_H
 #define PATIENT_MAIN_WINDOW_H
 #include "appointment_booking_widget.h"
-#include "doctor_info_widget.h"  // 添加这行
+#include "doctor_info_widget.h"
 #include <QMainWindow>
 #include <QStackedWidget>
 #include "profile_widget.h"
@@ -13,13 +13,15 @@
 // 前置声明
 class QLabel;
 class QTimer;
+class Widget;
 
 class PatientMainWindow : public QMainWindow
 {
 Q_OBJECT
 
 public:
-    explicit PatientMainWindow(const QString &userName = "Jane", QWidget *parent = nullptr);
+    explicit PatientMainWindow(Widget *api, int patientId,
+                               const QString &userName, QWidget *parent=nullptr);
     ~PatientMainWindow();
 
 signals:
@@ -45,6 +47,8 @@ private:
     void initUI();
     void initStyleSheets();
 
+    Widget *api = nullptr;
+    int currentPatientId = -1;
     QWidget* createHeaderWidget(const QString &userName);
     QWidget* createAdvicePanel();
     QWidget* createGridWidget();

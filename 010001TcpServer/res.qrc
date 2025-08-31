@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file>hospital_management.db</file>
+    </qresource>
+</RCC>

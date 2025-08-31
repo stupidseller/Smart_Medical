@@ -2,41 +2,16 @@
 D:/MyProject/MedicalSystemVersionTwo/main.cpp
 D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/common/login_dialog.h
  mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/profile_widget.h
- mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/appointment_booking_widget.h
- mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/common/login_dialog.cpp
 D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/doctor_list_widget.h
  mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/doctor/doctor_main_window.cpp
+D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/common/login_dialog.cpp
+D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/profile_widget.h
+D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/appointment_booking_widget.h
+ mmc:Q_OBJECT
 D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/medical_records_widget.h
- mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/payment_success_dialog.h
- mmc:Q_OBJECT
 D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/patient_main_window.h
- mmc:Q_OBJECT
 D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/appointment_booking_widget.cpp
 D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/doctor_list_widget.cpp
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/payment_success_dialog.cpp
 D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/medical_records_widget.cpp
 D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/patient_main_window.cpp
 D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/profile_widget.cpp
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/appointment_dialog.h
- mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/appointment_dialog.cpp
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/doctor_info_widget.h
- mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/doctor_info_widget.cpp
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/communication_widget.h
- mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/communication_widget.cpp
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/health_assessment_widget.h
- mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/health_assessment_widget.cpp
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/medicine_search_widget.h
- mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/medicine_search_widget.cpp
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/online_payment_widget.h
- mmc:Q_OBJECT
-D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/online_payment_widget.cpp

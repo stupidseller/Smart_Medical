@@ -21,8 +21,8 @@ QT_BEGIN_MOC_NAMESPACE
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_DEPRECATED
 struct qt_meta_stringdata_AppointmentBookingWidget_t {
-    QByteArrayData data[7];
-    char stringdata0[93];
+    QByteArrayData data[8];
+    char stringdata0[106];
 };
 #define QT_MOC_LITERAL(idx, ofs, len) \
     Q_STATIC_BYTE_ARRAY_DATA_HEADER_INITIALIZER_WITH_OFFSET(len, \
@@ -32,17 +32,18 @@ struct qt_meta_stringdata_AppointmentBookingWidget_t {
 static const qt_meta_stringdata_AppointmentBookingWidget_t qt_meta_stringdata_AppointmentBookingWidget = {
     {
 QT_MOC_LITERAL(0, 0, 24), // "AppointmentBookingWidget"
-QT_MOC_LITERAL(1, 25, 13), // "backRequested"
-QT_MOC_LITERAL(2, 39, 0), // ""
-QT_MOC_LITERAL(3, 40, 15), // "onSearchClicked"
-QT_MOC_LITERAL(4, 56, 16), // "onBookNowClicked"
-QT_MOC_LITERAL(5, 73, 10), // "doctorName"
-QT_MOC_LITERAL(6, 84, 8) // "timeSlot"
+QT_MOC_LITERAL(1, 25, 14), // "onDateSelected"
+QT_MOC_LITERAL(2, 40, 0), // ""
+QT_MOC_LITERAL(3, 41, 4), // "date"
+QT_MOC_LITERAL(4, 46, 23), // "onConfirmBookingClicked"
+QT_MOC_LITERAL(5, 70, 14), // "onBookingReply"
+QT_MOC_LITERAL(6, 85, 14), // "QNetworkReply*"
+QT_MOC_LITERAL(7, 100, 5) // "reply"
 
     },
-    "AppointmentBookingWidget\0backRequested\0"
-    "\0onSearchClicked\0onBookNowClicked\0"
-    "doctorName\0timeSlot"
+    "AppointmentBookingWidget\0onDateSelected\0"
+    "\0date\0onConfirmBookingClicked\0"
+    "onBookingReply\0QNetworkReply*\0reply"
 };
 #undef QT_MOC_LITERAL
 
@@ -57,21 +58,17 @@ static const uint qt_meta_data_AppointmentBookingWidget[] = {
        0,    0, // enums/sets
        0,    0, // constructors
        0,       // flags
-       1,       // signalCount
-
- // signals: name, argc, parameters, tag, flags
-       1,    0,   29,    2, 0x06 /* Public */,
+       0,       // signalCount
 
  // slots: name, argc, parameters, tag, flags
-       3,    0,   30,    2, 0x08 /* Private */,
-       4,    2,   31,    2, 0x08 /* Private */,
-
- // signals: parameters
-    QMetaType::Void,
+       1,    1,   29,    2, 0x08 /* Private */,
+       4,    0,   32,    2, 0x08 /* Private */,
+       5,    1,   33,    2, 0x08 /* Private */,
 
  // slots: parameters
+    QMetaType::Void, QMetaType::QDate,    3,
     QMetaType::Void,
-    QMetaType::Void, QMetaType::QString, QMetaType::QString,    5,    6,
+    QMetaType::Void, 0x80000000 | 6,    7,
 
        0        // eod
 };
@@ -82,19 +79,10 @@ void AppointmentBookingWidget::qt_static_metacall(QObject *_o, QMetaObject::Call
         auto *_t = static_cast<AppointmentBookingWidget *>(_o);
         Q_UNUSED(_t)
         switch (_id) {
-        case 0: _t->backRequested(); break;
-        case 1: _t->onSearchClicked(); break;
-        case 2: _t->onBookNowClicked((*reinterpret_cast< const QString(*)>(_a[1])),(*reinterpret_cast< const QString(*)>(_a[2]))); break;
+        case 0: _t->onDateSelected((*reinterpret_cast< const QDate(*)>(_a[1]))); break;
+        case 1: _t->onConfirmBookingClicked(); break;
+        case 2: _t->onBookingReply((*reinterpret_cast< QNetworkReply*(*)>(_a[1]))); break;
         default: ;
-        }
-    } else if (_c == QMetaObject::IndexOfMethod) {
-        int *result = reinterpret_cast<int *>(_a[0]);
-        {
-            using _t = void (AppointmentBookingWidget::*)();
-            if (*reinterpret_cast<_t *>(_a[1]) == static_cast<_t>(&AppointmentBookingWidget::backRequested)) {
-                *result = 0;
-                return;
-            }
         }
     }
 }
@@ -137,12 +125,6 @@ int AppointmentBookingWidget::qt_metacall(QMetaObject::Call _c, int _id, void **
         _id -= 3;
     }
     return _id;
-}
-
-// SIGNAL 0
-void AppointmentBookingWidget::backRequested()
-{
-    QMetaObject::activate(this, &staticMetaObject, 0, nullptr);
 }
 QT_WARNING_POP
 QT_END_MOC_NAMESPACE

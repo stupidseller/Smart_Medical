@@ -2,14 +2,13 @@
 #define LOGIN_DIALOG_H
 
 #include <QDialog>
-#include <QNetworkAccessManager> // 包含网络头文件
+
 
 // 前置声明
 class QStackedWidget;
 class QLineEdit;
 class QPushButton;
 class QComboBox;
-class QNetworkReply;
 class QLabel; // 添加 QLabel 的前置声明
 
 class LoginDialog : public QDialog
@@ -19,15 +18,26 @@ Q_OBJECT
 public:
     explicit LoginDialog(QWidget *parent = nullptr);
     ~LoginDialog();
+signals:
+    // 登录/注册请求，交给外部(Widget)去通过TCP发送
+        void loginRequested(const QString &username,
+                            const QString &password,
+                            const QString &roleText);      // “患者”/“医生”
 
-private slots:
+        void registerRequested(const QString &username,
+                               const QString &email,
+                               const QString &password,
+                               const QString &userType,     // "patient"/"doctor"
+                               const QString &department);  // 患者为空串
+
+public slots:
     void onLoginTabClicked();
+private slots:
     void onRegisterTabClicked();
     void onPatientTypeClicked();
     void onDoctorTypeClicked();
     void onLoginAttempt();
     void onRegisterAttempt();
-    void onRegistrationReply(QNetworkReply *reply);
 
 private:
     void initLayout();
@@ -55,8 +65,7 @@ private:
     QLabel *departmentLabel;
     QComboBox *registerDepartmentComboBox;
 
-    QNetworkAccessManager *networkManager;
-    QString selectedUserType; // 用于跟踪注册类型 (patient/doctor)
+    QString selectedUserType; // "patient"/"doctor"
 };
 
 #endif // LOGIN_DIALOG_H

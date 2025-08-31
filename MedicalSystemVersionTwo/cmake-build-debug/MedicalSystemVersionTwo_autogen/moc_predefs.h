@@ -75,7 +75,6 @@
 #define __SCHAR_MAX__ 0x7f
 #define __FLT128_MANT_DIG__ 113
 #define __WCHAR_MIN__ 0
-#define QT_SVG_LIB 1
 #define __INT64_C(c) c ## LL
 #define __DBL_DIG__ 15
 #define __GCC_ATOMIC_POINTER_LOCK_FREE 2

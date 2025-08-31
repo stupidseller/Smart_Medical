@@ -73,11 +73,7 @@
 		"D:/codeutils/CLion 2023.3.6/bin/cmake/win/x64/share/cmake-3.27/Modules/CMakeParseArguments.cmake",
 		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Network/Qt5NetworkConfigVersion.cmake",
 		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Network/Qt5NetworkConfig.cmake",
-		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Network/Qt5Network_QGenericEnginePlugin.cmake",
-		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Svg/Qt5SvgConfigVersion.cmake",
-		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Svg/Qt5SvgConfig.cmake",
-		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Svg/Qt5Svg_QSvgIconPlugin.cmake",
-		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Svg/Qt5Svg_QSvgPlugin.cmake"
+		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/lib/cmake/Qt5Network/Qt5Network_QGenericEnginePlugin.cmake"
 	],
 	"CMAKE_SOURCE_DIR" : "D:/MyProject/MedicalSystemVersionTwo",
 	"DEP_FILE" : "",
@@ -97,51 +93,21 @@
 			null
 		],
 		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/appointment_dialog.h",
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/doctor_list_widget.h",
 			"MU",
-			"CAA3G3FG6K/moc_appointment_dialog.cpp",
+			"CAA3G3FG6K/moc_doctor_list_widget.cpp",
 			null
 		],
 		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/communication_widget.h",
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/medical_records_widget.h",
 			"MU",
-			"CAA3G3FG6K/moc_communication_widget.cpp",
-			null
-		],
-		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/doctor_info_widget.h",
-			"MU",
-			"CAA3G3FG6K/moc_doctor_info_widget.cpp",
-			null
-		],
-		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/health_assessment_widget.h",
-			"MU",
-			"CAA3G3FG6K/moc_health_assessment_widget.cpp",
-			null
-		],
-		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/medicine_search_widget.h",
-			"MU",
-			"CAA3G3FG6K/moc_medicine_search_widget.cpp",
-			null
-		],
-		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/online_payment_widget.h",
-			"MU",
-			"CAA3G3FG6K/moc_online_payment_widget.cpp",
+			"CAA3G3FG6K/moc_medical_records_widget.cpp",
 			null
 		],
 		[
 			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/patient_main_window.h",
 			"MU",
 			"CAA3G3FG6K/moc_patient_main_window.cpp",
-			null
-		],
-		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/payment_success_dialog.h",
-			"MU",
-			"CAA3G3FG6K/moc_payment_success_dialog.cpp",
 			null
 		],
 		[
@@ -154,14 +120,7 @@
 	"HEADER_EXTENSIONS" : [ "h", "hh", "h++", "hm", "hpp", "hxx", "in", "txx" ],
 	"INCLUDE_DIR" : "D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/MedicalSystemVersionTwo_autogen/include",
 	"MOC_COMPILATION_FILE" : "D:/MyProject/MedicalSystemVersionTwo/cmake-build-debug/MedicalSystemVersionTwo_autogen/mocs_compilation.cpp",
-	"MOC_DEFINITIONS" : 
-	[
-		"QT_CORE_LIB",
-		"QT_GUI_LIB",
-		"QT_NETWORK_LIB",
-		"QT_SVG_LIB",
-		"QT_WIDGETS_LIB"
-	],
+	"MOC_DEFINITIONS" : [ "QT_CORE_LIB", "QT_GUI_LIB", "QT_NETWORK_LIB", "QT_WIDGETS_LIB" ],
 	"MOC_DEPEND_FILTERS" : 
 	[
 		[
@@ -178,7 +137,6 @@
 		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/include/QtCore",
 		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/mkspecs/win32-g++",
 		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/include/QtNetwork",
-		"C:/Qt/Qt5.12.8/5.12.8/mingw73_64/include/QtSvg",
 		"C:/Qt/Qt5.12.8/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include/c++",
 		"C:/Qt/Qt5.12.8/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include/c++/x86_64-w64-mingw32",
 		"C:/Qt/Qt5.12.8/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include/c++/backward",
@@ -218,52 +176,22 @@
 			null
 		],
 		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/doctor/doctor_main_window.cpp",
-			"MU",
-			null
-		],
-		[
 			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/appointment_booking_widget.cpp",
 			"MU",
 			null
 		],
 		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/appointment_dialog.cpp",
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/doctor_list_widget.cpp",
 			"MU",
 			null
 		],
 		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/communication_widget.cpp",
-			"MU",
-			null
-		],
-		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/doctor_info_widget.cpp",
-			"MU",
-			null
-		],
-		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/health_assessment_widget.cpp",
-			"MU",
-			null
-		],
-		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/medicine_search_widget.cpp",
-			"MU",
-			null
-		],
-		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/online_payment_widget.cpp",
+			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/medical_records_widget.cpp",
 			"MU",
 			null
 		],
 		[
 			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/patient_main_window.cpp",
-			"MU",
-			null
-		],
-		[
-			"D:/MyProject/MedicalSystemVersionTwo/src/ui/widgets/patient/payment_success_dialog.cpp",
 			"MU",
 			null
 		],

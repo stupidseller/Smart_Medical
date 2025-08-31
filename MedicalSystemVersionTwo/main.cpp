@@ -1,59 +1,87 @@
 #include "src/ui/widgets/common/login_dialog.h"
+#include "src/ui/widgets/widget.h"
 #include "src/ui/widgets/patient/patient_main_window.h"
 #include <QApplication>
-#include <QDialog>
-
-// 声明两个函数，用于管理程序状态
-void showLoginDialog();
-void showMainWindow(const QString &userName);
-
-// 全局指针，指向当前的主窗口
-PatientMainWindow *mainWindow = nullptr;
-
-// 显示主窗口的函数
-void showMainWindow(const QString &userName) {
-    // 创建并显示主窗口
-    mainWindow = new PatientMainWindow(userName);
-
-    // 连接登出信号：当主窗口请求登出时...
-    QObject::connect(mainWindow, &PatientMainWindow::logoutRequested, [&]() {
-        // 安全地删除当前的主窗口
-        mainWindow->deleteLater();
-        mainWindow = nullptr;
-        // 重新调用显示登录窗口的函数
-        showLoginDialog();
-    });
-
-    mainWindow->resize(1280, 820);
-    mainWindow->show();
-}
-
-// 显示登录窗口的函数
-void showLoginDialog() {
-    LoginDialog loginDialog;
-    if (loginDialog.exec() == QDialog::Accepted) {
-        // 登录成功，显示主窗口
-        // 这里可以从 loginDialog 获真实的用户姓名
-        showMainWindow("张患者"); // 使用一个示例名字
-    } else {
-        // 用户关闭了登录窗口，退出整个应用程序
-        qApp->quit();
-    }
-}
+#include <QMessageBox>
+#include <QCoreApplication>
 
 int main(int argc, char *argv[])
 {
-    // 关键修正：必须在创建 QApplication 对象之前设置这些全局属性
-    // 这样可以确保程序在高分辨率屏幕上正确缩放
+
     QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
-
     QApplication a(argc, argv);
 
-    // 启动程序，首先显示登录对话框
-    showLoginDialog();
+    Widget api(&a);
+    api.on_connectServerBtn_clicked(); // 可选：开机连
 
-    // 启动 Qt 的事件循环
-    // 程序将在此处持续运行，直到调用 qApp->quit()
-    return a.exec();
+    // 2) 创建登录对话框
+    LoginDialog loginDialog;
+
+    // 3)  UI → TCP | 连接信号 → 槽（这一步就是让 emit “调用东西”）
+    QObject::connect(&loginDialog, &LoginDialog::loginRequested,
+                     &api, &Widget::sendLoginData);
+    QObject::connect(&loginDialog, &LoginDialog::registerRequested,
+                     &api, &Widget::sendRegisterData);
+
+    // 登录成功信息缓存（供 exec() 返回后使用）
+    int loggedId = -1;
+    QString loggedName, loggedRole;
+
+    // TCP → UI（占位处理：弹框 + 可选 accept()）
+    QObject::connect(&api, &Widget::loginSucceededDetail, &loginDialog,
+                     [&](int id, const QString &name, const QString &role){
+        loggedId = id; loggedName = name; loggedRole = role;
+        QMessageBox::information(&loginDialog, "登录成功",
+                                 name.isEmpty() ? "欢迎回来！" : ("欢迎回来，" + name));
+        loginDialog.accept(); // 关闭对话框
+    });
+
+
+    QObject::connect(&api, &Widget::loginFailed, &loginDialog,
+                     [&](const QString &msg){
+        QMessageBox::warning(&loginDialog, "登录失败",
+                             msg.isEmpty() ? "请检查账号或密码" : msg);
+    });
+
+    QObject::connect(&api, &Widget::registerSucceeded, &loginDialog,
+                     [&](const QString &msg){
+        QMessageBox::information(&loginDialog, "注册成功",
+                                 msg.isEmpty() ? "账户已创建，请登录" : msg);
+        // 注册成功 → 回到登录页，但不关闭对话框
+        loginDialog.onLoginTabClicked();
+    });
+    QObject::connect(&api, &Widget::registerFailed, &loginDialog,
+                     [&](const QString &msg){
+        QMessageBox::warning(&loginDialog, "注册失败",
+                             msg.isEmpty() ? "请检查注册信息" : msg);
+    });
+
+
+    // 进入登录框（模态）
+    if (loginDialog.exec() == QDialog::Accepted) {
+        if (loggedRole == "patient") {
+            auto *mainWin = new PatientMainWindow(&api, loggedId, loggedName);
+            QObject::connect(mainWin, &PatientMainWindow::logoutRequested, [&](){
+                mainWin->close();
+                loggedId = -1; loggedName.clear(); loggedRole.clear();
+                loginDialog.show();
+                loginDialog.raise();
+                loginDialog.activateWindow();
+            });
+            mainWin->show();
+            return a.exec();
+        } else if (loggedRole == "doctor") {
+            // DoctorMainWindow 同理
+            // auto *w = new DoctorMainWindow(&api, loggedId, loggedName);
+            // ...
+            // return a.exec();
+            QMessageBox::information(nullptr, "医生端占位", "医生端主界面待接入。");
+            return 0;
+        } else {
+            QMessageBox::critical(nullptr, "错误", "未知角色");
+            return 0;
+        }
+    }
+    return 0;
 }
