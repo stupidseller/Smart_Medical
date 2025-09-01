@@ -35,16 +35,20 @@ public:
     ~OnlinePaymentWidget();
     // xiamian xinde
     void loadOrderDetails();
-
+    void doProcessPayment(int orderId, const QString &method, double amount,
+                              const QString &status = QString("success"),
+                              const QString &txref  = QString());
 signals:
     void backRequested();
     void paymentCompleted();
     //
     void requestLoadOrderDetails();
+    void processPayment(int orderId, const QString &method, double amount,
+                           const QString &status, const QString &txref);
 
 public slots:
     void onLoadOrderDetailsOk(const QJsonArray &orders); //
-
+    void onProcessPaymentOk(const QJsonObject &resp);
 private slots:
     void onConfirmPaymentClicked();
     void onPaymentProcessFinished();

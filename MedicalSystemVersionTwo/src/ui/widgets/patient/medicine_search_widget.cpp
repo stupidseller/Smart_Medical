@@ -584,11 +584,35 @@ void MedicineSearchWidget::onDetailClicked(const Medicine &medicine)
     });
     dialog.exec();
 }
-
-void MedicineSearchWidget::onPurchaseClicked(const Medicine &medicine)
+//
+void MedicineSearchWidget::doOnPurchaseClicked(int patientId, const QJsonArray &cart, int orderId)
 {
-    QMessageBox::information(this, "购买成功", QString("已成功购买 %1").arg(medicine.name));
+    emit onPurchaseClicked(patientId, cart, orderId);
 }
+void MedicineSearchWidget::onPurchaseClickedOk(const QJsonObject &resp)
+{
+    const bool ok = resp.value("success").toBool();
+    if (!ok) {
+        const QString err = resp.value("error").toString();
+        qWarning() << "[MedicineSearchWidget] purchase failed:" << err;
+        // QMessageBox::warning(this, tr("加入失败"), err);
+        return;
+    }
+
+    const int      oid   = resp.value("order_id").toInt();
+    const QString  code  = resp.value("order_code").toString();
+    const double   sum   = resp.value("total_amount").toDouble();
+    const double   disc  = resp.value("discount").toDouble(); // 非负；UI 如需显示负号就 -disc
+    const QJsonArray items = resp.value("items").toArray();
+
+    qDebug() << "[MedicineSearchWidget] purchase ok. oid=" << oid
+             << "code=" << code << "items=" << items.size()
+             << "sum=" << sum << "discount=" << disc;
+
+    // TODO: 刷新购物车/订单 UI
+    // QMessageBox::information(this, tr("加入成功"), tr("订单 %1 已更新").arg(code));
+}
+
 
 void MedicineSearchWidget::onBatchPurchaseClicked()
 {

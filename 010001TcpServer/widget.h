@@ -51,7 +51,10 @@ private:
     void handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj);
     void handleLoadOrderDetails(QTcpSocket *sock, const QJsonObject &obj);
     void handleloadAvailableDoctors(QTcpSocket *sock, const QJsonObject &obj);
-
+    void handlesubmitAppointmentRequest(QTcpSocket *sock, const QJsonObject &obj);
+    void handleloadDoctorList(QTcpSocket *sock, const QJsonObject &obj);
+    void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj);
+    void handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj);
     // --- reply helpers ---
     void sendJson(QTcpSocket *sock, const QJsonObject &obj);
     void sendError(QTcpSocket *sock, const QString &type, const QString &msg);

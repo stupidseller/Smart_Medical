@@ -149,10 +149,43 @@ void Widget::loadAvailableDoctors()
 {
     sendJson({{"type", "loadAvailableDoctors"}});
 }
-
-
-
-
+void Widget::submitAppointmentRequest(int patientId, int doctorId, int slotId, const QString &desc)
+{
+    sendJson({
+        {"type", "submitAppointmentRequest"},
+        {"patient_id", patientId},
+        {"doctor_id",  doctorId},
+        {"slot_id",    slotId},
+        {"disease_description", desc}
+    });
+}
+void Widget::loadDoctorList()
+{
+    sendJson({{"type", "loadDoctorList"}});
+}
+void Widget::onPurchaseClicked(int patientId, const QJsonArray &cart, int orderId)
+{
+    QJsonObject req{
+        {"type",       "onPurchaseClicked"},
+        {"patient_id", patientId},
+        {"cart",       cart}
+    };
+    if (orderId > 0) req.insert("order_id", orderId);
+    sendJson(req);
+}
+void Widget::processPayment(int orderId, const QString &method, double amount,
+                         const QString &status, const QString &txref)
+{
+    QJsonObject req{
+        {"type",    "processPayment"},
+        {"order_id", orderId},
+        {"method",   method},
+        {"amount",   amount},
+        {"status",   status}
+    };
+    if (!txref.isEmpty()) req.insert("transaction_ref", txref);
+    sendJson(req);
+}
 // xia mian zhi yunxu xiugai slotReadyRead
 // xiamian zhege if elseif
 void Widget::slotReadyRead()
@@ -186,6 +219,20 @@ void Widget::slotReadyRead()
         }  else if (type=="patient_profile_result") {
             emit patientProfileLoaded(obj.value("profile").toObject());
 
+        } else if (type == "processPayment") {
+            emit processPaymentOk(obj);
+            continue;
+        } else if (type == "onPurchaseClicked") {
+            emit onPurchaseClickedOk(obj);
+            continue;
+        } else if (type == "loadDoctorList") {
+            const bool ok = obj.value("success").toBool();
+            if (!ok) {
+                qWarning() << "[Api] loadDoctorList failed:" << obj.value("error").toString();
+                continue;
+            }
+            emit loadDoctorListOk(obj.value("doctors").toArray());
+            continue;
         } else if (type == "loadOrderDetails") {
             const bool ok = obj.value("success").toBool();
             if (!ok) {
@@ -193,6 +240,9 @@ void Widget::slotReadyRead()
                 continue;
             }
             emit loadOrderDetailsOk(obj.value("orders").toArray());
+            continue;
+        } else if (type == "submitAppointmentRequest") {
+            emit submitAppointmentRequestOk(obj);
             continue;
         } else if (type=="update_patient_profile_result") {
             emit patientProfileSaved(obj.value("success").toBool(),

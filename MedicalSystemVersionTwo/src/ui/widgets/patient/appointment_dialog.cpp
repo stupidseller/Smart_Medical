@@ -76,36 +76,35 @@ void AppointmentDialog::onConfirmBooking() {
         accept(); // 如果提交成功，则关闭对话框并返回 QDialog::Accepted
     }
 }
-
-// --- 后端交互函数 (伪代码实现) ---
-bool AppointmentDialog::submitAppointmentRequest() {
-    //
-    // 后端交互函数：提交一个新的挂号预约
-    // API端点建议: POST /api/patient/appointments
-    // 请求体 (JSON):
-    // {
-    //   "doctorName": "王医生",
-    //   "department": "心血管内科",
-    //   "appointmentTime": "08-31 上午",
-    //   "diseaseDescription": "用户输入的病情描述..."
-    // }
-    //
-
-    // --- 前端伪代码 ---
-    // 1. 收集信息
-    QString desc = getDiseaseDescription();
-
-    // 2. 模拟网络请求
-    qDebug() << "正在提交预约请求...";
-    qDebug() << "医生: " << m_doctorName;
-    qDebug() << "时间: " << m_time;
-    qDebug() << "病情: " << desc;
-
-    // 3. 模拟成功响应
-    QMessageBox::information(this, "成功", "您已成功预约挂号！");
-    return true; // 返回 true 表示成功
+//
+void AppointmentDialog::doSubmitAppointmentRequest(int patientId, int doctorId, int slotId, const QString &desc)
+{
+    // 直接把数据交给 Api
+    emit submitAppointmentRequest(patientId, doctorId, slotId, desc);
 }
+void AppointmentDialog::onSubmitAppointmentRequestOk(const QJsonObject &resp)
+{
+    const bool ok = resp.value("success").toBool();
+    if (!ok) {
+        const QString err = resp.value("error").toString();
+        qWarning() << "[AppointmentDialog] submit failed:" << err;
+        // 你可以用 QMessageBox 提示用户
+        // QMessageBox::warning(this, tr("预约失败"), err);
+        return;
+    }
 
+    const qlonglong apptId = resp.value("appointment_id").toVariant().toLongLong();
+    const int pid  = resp.value("patient_id").toInt();
+    const int did  = resp.value("doctor_id").toInt();
+    const int sid  = resp.value("slot_id").toInt();
+
+    qDebug() << "[AppointmentDialog] submit ok. appt_id=" << apptId
+             << "patient=" << pid << "doctor=" << did << "slot=" << sid;
+
+    // TODO: 刷新 UI、关闭对话框等
+    // QMessageBox::information(this, tr("预约成功"), tr("预约已提交，编号：%1").arg(apptId));
+}
+// shangmian gaide
 void AppointmentDialog::initStyleSheets() {
     this->setStyleSheet(R"(
         #AppointmentDialog { background-color: white; border-radius: 12px; }

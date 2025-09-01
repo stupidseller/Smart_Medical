@@ -13,11 +13,20 @@ Q_OBJECT
 
 public:
     // 构造函数接收必要的预约信息
+    explicit AppointmentDialog(QWidget *parent = nullptr);
     explicit AppointmentDialog(const QString &doctorName, const QString &doctorTitle, const QString &department, const QString &time, const QString &fee, QWidget *parent = nullptr);
     ~AppointmentDialog();
+    //
+    void doSubmitAppointmentRequest(int patientId, int doctorId, int slotId, const QString &desc);
+
 
     // 获取用户输入的病情描述
     QString getDiseaseDescription() const;
+signals:
+    //
+    void submitAppointmentRequest(int patientId, int doctorId, int slotId, const QString &desc);
+public slots:
+    void onSubmitAppointmentRequestOk(const QJsonObject &resp); //
 
 private slots:
     void onConfirmBooking();
@@ -25,9 +34,6 @@ private slots:
 private:
     void initUI();
     void initStyleSheets();
-
-    // --- 后端交互 (伪代码) ---
-    bool submitAppointmentRequest();
 
     // 存储传入的信息
     QString m_doctorName;

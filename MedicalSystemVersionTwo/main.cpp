@@ -3,6 +3,8 @@
 #include "src/ui/widgets/patient/patient_main_window.h"
 #include "src/ui/widgets/patient/medicine_search_widget.h"
 #include "src/ui/widgets/patient/online_payment_widget.h"
+#include "src/ui/widgets/patient/appointment_dialog.h"
+#include "src/ui/widgets/patient/doctor_info_widget.h"
 #include <QApplication>
 #include <QMessageBox>
 #include <QPointer>
@@ -134,6 +136,68 @@ int main(int argc, char *argv[])
 
     // 启动即加载（也可做成按钮）
     widget.loadAvailableDoctors();
+    // //////////////////////////////////
+    AppointmentDialog dlg;
 
+        // 1) appointment dialog 发起 -> Api 发送
+        QObject::connect(&dlg, &AppointmentDialog::submitAppointmentRequest,
+                         &api, &Api::submitAppointmentRequest);
+
+        // 2) Api 收到服务器响应 -> 喂回 appointment dialog
+        QObject::connect(&api, &Api::submitAppointmentRequestOk,
+                         &dlg, &AppointmentDialog::onSubmitAppointmentRequestOk);
+
+        // （可选）连接到服务器
+        // api.connectToServer(QHostAddress::LocalHost, 12345);
+
+        dlg.show();
+        // /////////////////////////////
+        DoctorInfoWidget widget;
+
+            // 1) widget 发起加载 -> Api 发送请求
+            QObject::connect(&widget, &DoctorInfoWidget::requestLoadDoctorList,
+                             &api,    &Api::loadDoctorList);
+
+            // 2) Api 收到响应 -> 喂给 widget
+            QObject::connect(&api,    &Api::loadDoctorListOk,
+                             &widget, &DoctorInfoWidget::onLoadDoctorListOk);
+
+            // （可选）连接服务器
+            // api.connectToServer(QHostAddress::LocalHost, 12345);
+
+            widget.show();
+
+            // 启动即加载（或你用按钮触发）
+            widget.loadDoctorList();
+     // ////////////////////////////
+            MedicineSearchWidget widget;
+
+                // 1) medicine search widget 发起 -> Api 发送
+                QObject::connect(&widget, &MedicineSearchWidget::onPurchaseClicked,
+                                 &api,    &Api::onPurchaseClicked);
+
+                // 2) Api 收到响应 -> 喂回 medicine search widget
+                QObject::connect(&api,    &Api::onPurchaseClickedOk,
+                                 &widget, &MedicineSearchWidget::onPurchaseClickedOk);
+
+                // （可选）连接服务器
+                // api.connectToServer(QHostAddress::LocalHost, 12345);
+
+                widget.show();
+    // ///////////////////////////////
+                OnlinePaymentWidget widget;
+
+                    // 1) online payment widget 发起 -> Api 发送
+                    QObject::connect(&widget, &OnlinePaymentWidget::processPayment,
+                                     &api,    &Api::processPayment);
+
+                    // 2) Api 收到响应 -> 喂回 online payment widget
+                    QObject::connect(&api,    &Api::processPaymentOk,
+                                     &widget, &OnlinePaymentWidget::onProcessPaymentOk);
+
+                    // （可选）连接服务器
+                    // api.connectToServer(QHostAddress::LocalHost, 12345);
+
+                    widget.show();
     return a.exec();
 }

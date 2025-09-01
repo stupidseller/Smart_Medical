@@ -34,10 +34,12 @@ Q_OBJECT
 public:
     explicit MedicineDetailDialog(const Medicine &medicine, QWidget *parent = nullptr);
     // xin jia de
-
+    explicit MedicineDetailDialog(QWidget *parent = nullptr);
+    void doOnPurchaseClicked(int patientId, const QJsonArray &cart, int orderId = 0);
 signals:
     void purchaseRequested(const QString &medicineName);
     void requestLoadMedicineData(); //
+    void onPurchaseClicked(int patientId, const QJsonArray &cart, int orderId);
 private:
     void setupUI(const Medicine &medicine);
     void initStyles();
@@ -51,11 +53,13 @@ public:
     explicit MedicineSearchWidget(QWidget *parent = nullptr);
     ~MedicineSearchWidget();
     void loadMedicineData();//
+    void doOnPurchaseClicked(int patientId, const QJsonArray &cart, int orderId = 0);
 signals:
     void backRequested();
     void requestLoadMedicineData();//
 public slots:
     void onLoadMedicineDataOk(const QJsonArray &medicines);//
+    void onPurchaseClickedOk(const QJsonObject &resp);
 private slots:
     void onSearchClicked();
     void onCategoryChanged();

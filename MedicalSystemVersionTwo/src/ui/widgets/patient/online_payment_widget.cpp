@@ -155,9 +155,32 @@ void OnlinePaymentWidget::onLoadOrderDetailsOk(const QJsonArray &orders)
     refreshUi();
 }
 
-void OnlinePaymentWidget::processPayment(int paymentMethod) {
-    qDebug() << "[mock] pay by" << (paymentMethod==0 ? "wechat" : "alipay");
-    QTimer::singleShot(3000, this, &OnlinePaymentWidget::onPaymentProcessFinished);
+
+void OnlinePaymentWidget::doProcessPayment(int orderId, const QString &method, double amount,
+                                           const QString &status, const QString &txref)
+{
+    emit processPayment(orderId, method, amount, status, txref);
+}
+void OnlinePaymentWidget::onProcessPaymentOk(const QJsonObject &resp)
+{
+    // Widget::processPayment() 里：if (type=="processPayment") { ... }
+    const bool ok = resp.value("success").toBool();
+    const QString msg = resp.value("message").toString();
+
+    const QJsonObject order   = resp.value("order").toObject();
+    const QJsonObject payment = resp.value("payment").toObject();
+
+    qDebug() << "[OnlinePaymentWidget] payment result ok=" << ok
+             << "msg=" << msg
+             << "order_id=" << order.value("order_id").toInt()
+             << "paid=" << order.value("paid_amount").toDouble()
+             << "due="  << order.value("due_amount").toDouble();
+
+    // 这里你就能“识别到是否支付成功了”
+    // if (ok) 提示成功，否则提示失败/待确认
+    // QMessageBox::information(this, tr("支付结果"), msg);
+
+    // TODO: 刷新订单 UI、跳转到结果页等
 }
 // --- UI 构建函数实现 ---
 QWidget* OnlinePaymentWidget::createHeader() {

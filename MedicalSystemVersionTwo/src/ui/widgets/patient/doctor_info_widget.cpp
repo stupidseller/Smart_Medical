@@ -11,16 +11,6 @@
 #include <QLineEdit>
 #include <QSpacerItem>
 
-struct DoctorProfile {
-    QString name;
-    QString title;
-    QString department;
-    QString specialty;
-    QString schedule;
-    QString experience;
-    QString education;
-    QString achievements;
-};
 
 DoctorInfoWidget::DoctorInfoWidget(QWidget *parent)
         : QWidget(parent), doctorListLayout(nullptr)
@@ -209,44 +199,7 @@ void DoctorInfoWidget::loadDoctorList() {
     }
 
     // 模拟医生数据
-    QList<DoctorProfile> doctors = {
-            DoctorProfile{
-                    "王建华", "主任医师", "心血管内科",
-                    "擅长：高血压、冠心病、心力衰竭、心律失常的诊断与治疗，在心血管介入治疗方面有丰富经验",
-                    "周一至周五上午", "25年",
-                    "北京医科大学医学博士", "获得省级医学科技进步奖二等奖"
-            },
-            DoctorProfile{
-                    "李明", "副主任医师", "消化内科",
-                    "擅长：胃炎、胃溃疡、肝炎、胆囊炎、消化道出血的诊断与治疗，内镜诊疗技术精湛",
-                    "周二至周六上午", "18年",
-                    "中山医科大学临床医学硕士", "发表SCI论文15篇"
-            },
-            DoctorProfile{
-                    "张丽", "主治医师", "妇产科",
-                    "擅长：妇科炎症、月经不调、不孕不育、产前检查、自然分娩、剖宫产等妇产科疾病诊治",
-                    "周一至周五下午", "12年",
-                    "华西医科大学临床医学学士", "妇产科专业委员会委员"
-            },
-            DoctorProfile{
-                    "陈强", "主治医师", "骨科",
-                    "擅长：骨折、关节炎、颈椎病、腰椎间盘突出、运动损伤的诊断与治疗，微创手术经验丰富",
-                    "周三至周日上午", "15年",
-                    "第四军医大学骨科学硕士", "骨科微创技术培训导师"
-            },
-            DoctorProfile{
-                    "刘芳", "副主任医师", "儿科",
-                    "擅长：小儿感冒、发热、咳嗽、腹泻、过敏性疾病、儿童生长发育评估与指导",
-                    "周一至周五全天", "20年",
-                    "首都医科大学儿科学硕士", "儿科急救专业委员会委员"
-            },
-            DoctorProfile{
-                    "赵勇", "主任医师", "神经外科",
-                    "擅长：脑肿瘤、脑血管病、颅脑外伤、脊髓疾病的外科治疗，神经内镜手术技术娴熟",
-                    "周二、周四、周六上午", "28年",
-                    "北京协和医学院神经外科博士", "国际神经外科学会会员"
-            }
-    };
+    emit requestLoadDoctorList();
 
     // 根据搜索条件过滤
     QString selectedDept = departmentCombo->currentText();
@@ -270,6 +223,38 @@ void DoctorInfoWidget::loadDoctorList() {
     }
 
     doctorListLayout->addStretch();
+}
+
+void DoctorInfoWidget::onLoadDoctorListOk(const QJsonArray &doctors)
+{
+    model_.clear();
+    model_.reserve(doctors.size());
+
+    for (const QJsonValue &v : doctors) {
+        const QJsonObject o = v.toObject();
+        DoctorProfile p;
+        p.doctorId   = o.value("doctor_id").toInt();
+        p.name       = o.value("name").toString();
+        p.title      = o.value("title").toString();
+        p.department = o.value("department").toString();
+        p.specialty  = o.value("specialty").toString();
+        p.experience = o.value("experience").toString();
+
+        // 服务器暂未提供，保持为空；未来提供后改为读取：
+        // p.schedule  = o.value("schedule").toString();
+        // p.education = o.value("education").toString();
+        // p.awards    = o.value("awards").toString();
+
+        model_.push_back(std::move(p));
+    }
+
+    refreshUi();
+}
+
+void DoctorInfoWidget::refreshUi()
+{
+    // TODO: 把 model_ 渲染到 UI
+    qDebug() << "[DoctorInfoWidget] loaded doctors:" << model_.size();
 }
 
 void DoctorInfoWidget::onSearchClicked() {

@@ -247,7 +247,14 @@ void Widget::handleMessage(QTcpSocket *sock, const QJsonObject &obj)
         handleLoadOrderDetails(sock, obj);
     } else if (type == "loadAvailableDoctors") {
         handleloadAvailableDoctors(sock, obj);
-        return;
+    } else if (type == "submitAppointmentRequest") {
+        handlesubmitAppointmentRequest(sock, obj);
+    } else if (type == "loadDoctorList") {
+        handleloadDoctorList(sock, obj);
+    } else if (type == "onPurchaseClicked") {
+        handleonPurchaseClicked(sock, obj);
+    } else if (type == "processPayment") {
+        handleprocessPayment(sock, obj);
     } else {
         qDebug() << "unknown type:" << type << obj;
         sendError(sock, "error", QString("unknown type: %1").arg(type));
@@ -549,6 +556,576 @@ void handleloadAvailableDoctors(QTcpSocket *sock, const QJsonObject &obj)
         {"success", true},
         {"count",   static_cast<int>(doctors.size())},
         {"doctors", doctors}
+    });
+}
+
+void handlesubmitAppointmentRequest(QTcpSocket *sock, const QJsonObject &obj)
+{
+    // 1) 参数校验（与 UI 对齐）
+    const int patientId = obj.value("patient_id").toInt(-1);
+    const int doctorId  = obj.value("doctor_id").toInt(-1);
+    const int slotId    = obj.value("slot_id").toInt(-1);
+    const QString desc  = obj.value("disease_description").toString();
+
+    if (patientId < 0 || doctorId < 0 || slotId < 0) {
+        sendJson(sock, {
+            {"type",    "submitAppointmentRequest"},
+            {"success", false},
+            {"error",   "invalid arguments: require patient_id, doctor_id, slot_id"}
+        });
+        return;
+    }
+
+    // 2) 打开数据库
+    QSqlDatabase db = QSqlDatabase::database();
+    if (!db.isValid() || !db.isOpen()) {
+        qWarning() << "[submitAppointmentRequest] database not open";
+        sendJson(sock, {
+            {"type",    "submitAppointmentRequest"},
+            {"success", false},
+            {"error",   "database not open"}
+        });
+        return;
+    }
+
+    // 3) 插入预约（只写 UI 需要的列；created_at 可由表默认值填写）
+    static const char *kSql = R"SQL(
+        INSERT INTO appointments
+            (patient_id, doctor_id, slot_id, disease_description)
+        VALUES
+            (:patient_id, :doctor_id, :slot_id, :disease_description)
+    )SQL";
+
+    QSqlQuery q(db);
+
+    // 可选：事务，便于后续扩展扣减号源等
+    if (!db.transaction()) {
+        qWarning() << "[submitAppointmentRequest] begin tx failed:" << db.lastError().text();
+        // 不中断，继续尝试执行（有的驱动不需要显式事务）
+    }
+
+    if (!q.prepare(kSql)) {
+        const QString err = q.lastError().text();
+        qWarning() << "[submitAppointmentRequest] prepare failed:" << err;
+        sendJson(sock, {
+            {"type",    "submitAppointmentRequest"},
+            {"success", false},
+            {"error",   QString("prepare failed: %1").arg(err)}
+        });
+        if (db.isOpen()) db.rollback();
+        return;
+    }
+
+    q.bindValue(":patient_id", patientId);
+    q.bindValue(":doctor_id",  doctorId);
+    q.bindValue(":slot_id",    slotId);
+    q.bindValue(":disease_description", desc);
+
+    if (!q.exec()) {
+        const QString err = q.lastError().text();
+        qWarning() << "[submitAppointmentRequest] exec failed:" << err;
+        sendJson(sock, {
+            {"type",    "submitAppointmentRequest"},
+            {"success", false},
+            {"error",   QString("exec failed: %1").arg(err)}
+        });
+        if (db.isOpen()) db.rollback();
+        return;
+    }
+
+    const QVariant newId = q.lastInsertId();   // SQLite/MySQL 可用；部分驱动可能返回无效
+    if (!db.commit()) {
+        qWarning() << "[submitAppointmentRequest] commit failed:" << db.lastError().text();
+        // 即便提交失败，也给出错误
+        sendJson(sock, {
+            {"type",    "submitAppointmentRequest"},
+            {"success", false},
+            {"error",   QString("commit failed: %1").arg(db.lastError().text())}
+        });
+        return;
+    }
+
+    // 4) 响应（type 仍然是 submitAppointmentRequest，满足你在 Widget 里判断）
+    QJsonObject resp{
+        {"type",          "submitAppointmentRequest"},
+        {"success",       true},
+        {"appointment_id", newId.isValid() ? newId.toLongLong() : -1},
+        {"patient_id",    patientId},
+        {"doctor_id",     doctorId},
+        {"slot_id",       slotId}
+        // 需要的话可回显 desc；通常不必
+        // {"disease_description", desc}
+    };
+    sendJson(sock, resp);
+}
+
+void handleloadDoctorList(QTcpSocket *sock, const QJsonObject &obj)
+    {
+        Q_UNUSED(obj);
+
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isValid() || !db.isOpen()) {
+            qWarning() << "[loadDoctorList] database not open";
+            sendJson(sock, {
+                {"type", "loadDoctorList"},
+                {"success", false},
+                {"error",  "database not open"}
+            });
+            return;
+        }
+
+        // 只查 UI 需要的列（与前端字段对齐）
+        static const char* SQL_DOCTORS_FOR_UI =
+            "SELECT "
+            "  d.doctor_id, "
+            "  d.name, "
+            "  d.title, "
+            "  dep.name AS department_name, "
+            "  COALESCE(d.specialty, '')   AS specialty, "
+            "  COALESCE(d.experience, '')  AS experience "
+            "FROM doctors d "
+            "JOIN departments dep ON dep.department_id = d.department_id "
+            "ORDER BY d.doctor_id;";
+
+        QSqlQuery q(db);
+        if (!q.prepare(SQL_DOCTORS_FOR_UI) || !q.exec()) {
+            qWarning() << "[loadDoctorList] sql error:" << q.lastError().text();
+            sendJson(sock, {
+                {"type", "loadDoctorList"},
+                {"success", false},
+                {"error",  q.lastError().text()}
+            });
+            return;
+        }
+
+        QJsonArray doctors;
+        doctors.reserve(q.size() > 0 ? q.size() : 8);
+
+        while (q.next()) {
+            const int      doctorId  = q.value("doctor_id").toInt();
+            const QString  name      = q.value("name").toString();
+            const QString  title     = q.value("title").toString();
+            const QString  dept      = q.value("department_name").toString();
+            const QString  specialty = q.value("specialty").toString();   // 例如："擅长：..."
+            const QString  exp       = q.value("experience").toString();  // 例如："25年"
+
+            // 仅返回表里有的字段；若 UI 还需 schedule/education/awards，可另建表或另一个接口
+            QJsonObject item{
+                {"doctor_id",  doctorId},
+                {"name",       name},
+                {"title",      title},
+                {"department", dept},
+                {"specialty",  specialty},
+                {"experience", exp}
+            };
+            doctors.append(item);
+
+            qDebug().noquote() << QString("[Doctor] #%1 %2 %3 %4 %5")
+                                  .arg(doctorId)
+                                  .arg(name, title, dept, exp);
+        }
+
+        // 响应仍然用 "loadDoctorList"（与你的 Widget 判断一致）
+        sendJson(sock, {
+            {"type",    "loadDoctorList"},
+            {"success", true},
+            {"count",   static_cast<int>(doctors.size())},
+            {"doctors", doctors}
+        });
+    }
+
+void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
+{
+    // ========== 0) 参数读取与校验 ==========
+    const int patientId = obj.value("patient_id").toInt(-1);
+    const int reqOid    = obj.value("order_id").toInt(0);     // 可选；>0 表示想复用已创建的订单
+    const QJsonArray cart = obj.value("cart").toArray();      // [{medicine_id, qty, unit_price?}, ...]
+
+    if (patientId < 0) { sendJson(sock, makeError("invalid patient_id")); return; }
+    if (cart.isEmpty()) { sendJson(sock, makeError("cart is empty")); return; }
+
+    // ========== 1) 打开数据库 ==========
+    QSqlDatabase db = QSqlDatabase::database();
+    if (!db.isValid() || !db.isOpen()) {
+        qWarning() << "[onPurchaseClicked] database not open";
+        sendJson(sock, makeError("database not open"));
+        return;
+    }
+
+    // ========== 2) 准备事务 ==========
+    if (!db.transaction()) {
+        qWarning() << "[onPurchaseClicked] begin transaction failed:" << db.lastError().text();
+        // 不中断，继续尝试
+    }
+
+    int oid = 0;
+
+    // ========== 3) 若请求带了 order_id，确保处于 'created' 状态 ==========
+    if (reqOid > 0) {
+        QSqlQuery chk(db);
+        const char *sql_chk = R"SQL(
+            SELECT order_id FROM orders
+            WHERE order_id = :oid AND patient_id = :p AND status = 'created'
+            LIMIT 1
+        )SQL";
+        if (!chk.prepare(sql_chk)) {
+            const QString err = chk.lastError().text();
+            qWarning() << "[onPurchaseClicked] chk prepare failed:" << err;
+            db.rollback();
+            sendJson(sock, makeError(QString("sql prepare failed(chk): %1").arg(err)));
+            return;
+        }
+        chk.bindValue(":oid", reqOid);
+        chk.bindValue(":p",   patientId);
+        if (!chk.exec()) {
+            const QString err = chk.lastError().text();
+            qWarning() << "[onPurchaseClicked] chk exec failed:" << err;
+            db.rollback();
+            sendJson(sock, makeError(QString("sql exec failed(chk): %1").arg(err)));
+            return;
+        }
+        if (chk.next()) {
+            oid = reqOid; // 可直接复用
+        }
+        // 若没查到，就后续创建新订单（不报错）
+    }
+
+    // ========== 4) 如有必要，创建新订单（status='created'）==========
+    if (oid == 0) {
+        QSqlQuery qi(db);
+        const char *sql_new = R"SQL(
+            INSERT INTO orders (patient_id, status, total_amount, discount, created_at)
+            VALUES (:p, 'created', 0, 0, CURRENT_TIMESTAMP)
+        )SQL";
+        if (!qi.prepare(sql_new)) {
+            const QString err = qi.lastError().text();
+            qWarning() << "[onPurchaseClicked] new order prepare failed:" << err;
+            db.rollback();
+            sendJson(sock, makeError(QString("prepare failed(new order): %1").arg(err)));
+            return;
+        }
+        qi.bindValue(":p", patientId);
+        if (!qi.exec()) {
+            const QString err = qi.lastError().text();
+            qWarning() << "[onPurchaseClicked] new order exec failed:" << err;
+            db.rollback();
+            sendJson(sock, makeError(QString("exec failed(new order): %1").arg(err)));
+            return;
+        }
+        QVariant v = qi.lastInsertId();
+        oid = v.isValid() ? v.toInt() : 0;
+        if (oid <= 0) {
+            db.rollback();
+            sendJson(sock, makeError("cannot get new order_id"));
+            return;
+        }
+    }
+
+    // ========== 5) 将购物车条目落库到 order_items ==========
+    // 如果客户端未传单价，则以 medicines.price 为准
+    QSqlQuery qFindMed(db);
+    if (!qFindMed.prepare(R"SQL(
+        SELECT name, price FROM medicines WHERE medicine_id = :mid LIMIT 1
+    )SQL")) {
+        const QString err = qFindMed.lastError().text();
+        qWarning() << "[onPurchaseClicked] find med prepare failed:" << err;
+        db.rollback();
+        sendJson(sock, makeError(QString("prepare failed(find med): %1").arg(err)));
+        return;
+    }
+
+    QSqlQuery qInsItem(db);
+    if (!qInsItem.prepare(R"SQL(
+        INSERT INTO order_items
+            (order_id, item_type, item_name, medicine_id, quantity, unit_price, amount)
+        VALUES
+            (:oid, 'drug', :iname, :mid, :qty, :uprice, :amount)
+    )SQL")) {
+        const QString err = qInsItem.lastError().text();
+        qWarning() << "[onPurchaseClicked] insert item prepare failed:" << err;
+        db.rollback();
+        sendJson(sock, makeError(QString("prepare failed(insert item): %1").arg(err)));
+        return;
+    }
+
+    QJsonArray itemsOut; // 回传给前端的条目
+    double total = 0.0;
+
+    for (const QJsonValue &v : cart) {
+        const QJsonObject it = v.toObject();
+        const int mid = it.value("medicine_id").toInt(-1);
+        const int qty = it.value("qty").toInt(0);
+        double unitPrice = it.value("unit_price").toDouble(-1.0);
+
+        if (mid < 0 || qty <= 0) {
+            db.rollback();
+            sendJson(sock, makeError("invalid cart item (medicine_id/qty)"));
+            return;
+        }
+
+        // 查药品名称与默认价格
+        qFindMed.bindValue(":mid", mid);
+        if (!qFindMed.exec()) {
+            const QString err = qFindMed.lastError().text();
+            qWarning() << "[onPurchaseClicked] find med exec failed:" << err;
+            db.rollback();
+            sendJson(sock, makeError(QString("exec failed(find med): %1").arg(err)));
+            return;
+        }
+        if (!qFindMed.next()) {
+            db.rollback();
+            sendJson(sock, makeError(QString("medicine not found: id=%1").arg(mid)));
+            return;
+        }
+        const QString medName = qFindMed.value("name").toString();
+        const double  dbPrice = qFindMed.value("price").toDouble();
+        if (unitPrice < 0.0) unitPrice = dbPrice;
+
+        // 金额计算
+        const double amount = unitPrice * static_cast<double>(qty);
+        total += amount;
+
+        // 入库
+        const QString itemName = QStringLiteral("药品-%1").arg(medName);
+        qInsItem.bindValue(":oid",    oid);
+        qInsItem.bindValue(":iname",  itemName);
+        qInsItem.bindValue(":mid",    mid);
+        qInsItem.bindValue(":qty",    qty);
+        qInsItem.bindValue(":uprice", unitPrice);
+        qInsItem.bindValue(":amount", amount);
+        if (!qInsItem.exec()) {
+            const QString err = qInsItem.lastError().text();
+            qWarning() << "[onPurchaseClicked] insert item exec failed:" << err;
+            db.rollback();
+            sendJson(sock, makeError(QString("exec failed(insert item): %1").arg(err)));
+            return;
+        }
+
+        // 回传条目
+        itemsOut.append(QJsonObject{
+            {"medicine_id", mid},
+            {"name",        medName},
+            {"qty",         qty},
+            {"unit_price",  unitPrice},
+            {"amount",      amount}
+        });
+    }
+
+    // ========== 6) 更新订单总额 ==========
+    {
+        QSqlQuery qUpd(db);
+        if (!qUpd.prepare(R"SQL(
+            UPDATE orders SET total_amount = COALESCE(total_amount,0) + :delta WHERE order_id = :oid
+        )SQL")) {
+            const QString err = qUpd.lastError().text();
+            qWarning() << "[onPurchaseClicked] update order prepare failed:" << err;
+            db.rollback();
+            sendJson(sock, makeError(QString("prepare failed(update order): %1").arg(err)));
+            return;
+        }
+        qUpd.bindValue(":delta", total);
+        qUpd.bindValue(":oid",   oid);
+        if (!qUpd.exec()) {
+            const QString err = qUpd.lastError().text();
+            qWarning() << "[onPurchaseClicked] update order exec failed:" << err;
+            db.rollback();
+            sendJson(sock, makeError(QString("exec failed(update order): %1").arg(err)));
+            return;
+        }
+    }
+
+    // ========== 7) 查询订单摘要（生成 order_code 等）==========
+    QString orderCode; double totalAmount=0.0; double discount=0.0;
+    {
+        QSqlQuery qSum(db);
+        const char *sqlSum = R"SQL(
+            SELECT
+              o.total_amount,
+              o.discount,
+              ('PO' || strftime('%Y%m%d', o.created_at) || printf('%06d', o.order_id)) AS order_code
+            FROM orders o WHERE o.order_id = :oid LIMIT 1
+        )SQL";
+        if (!qSum.prepare(sqlSum)) {
+            const QString err = qSum.lastError().text();
+            qWarning() << "[onPurchaseClicked] sum prepare failed:" << err;
+            db.rollback();
+            sendJson(sock, makeError(QString("prepare failed(sum): %1").arg(err)));
+            return;
+        }
+        qSum.bindValue(":oid", oid);
+        if (!qSum.exec() || !qSum.next()) {
+            const QString err = qSum.lastError().text();
+            qWarning() << "[onPurchaseClicked] sum exec/next failed:" << err;
+            db.rollback();
+            sendJson(sock, makeError(QString("exec failed(sum): %1").arg(err)));
+            return;
+        }
+        totalAmount = qSum.value("total_amount").toDouble();
+        discount    = qSum.value("discount").toDouble(); // 库里存非负
+        orderCode   = qSum.value("order_code").toString();
+    }
+
+    // ========== 8) 提交事务 ==========
+    if (!db.commit()) {
+        const QString err = db.lastError().text();
+        qWarning() << "[onPurchaseClicked] commit failed:" << err;
+        sendJson(sock, makeError(QString("commit failed: %1").arg(err)));
+        return;
+    }
+
+    // ========== 9) 成功响应 ==========
+    sendJson(sock, {
+        {"type",          "onPurchaseClicked"},
+        {"success",       true},
+        {"order_id",      oid},
+        {"order_code",    orderCode},
+        {"total_amount",  totalAmount},
+        {"discount",      discount},    // 回传原始折扣（非负）；UI 如需负号可取 -discount
+        {"count",         static_cast<int>(itemsOut.size())},
+        {"items",         itemsOut}     // 这边列表，包含多个用户选中的购买车药物
+    });
+}
+
+void handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
+{
+    // 0) 读取参数 + 校验
+    const int     orderId = obj.value("order_id").toInt(-1);
+    QString       method  = obj.value("method").toString().trimmed();      // 例：WeChat/Alipay/Cash
+    const double  amount  = obj.value("amount").toDouble(-1.0);
+    QString       status  = obj.value("status").toString("success");       // success/pending/failed
+    const QString txref   = obj.value("transaction_ref").toString();
+
+    if (orderId <= 0) { sendError(sock, "invalid order_id"); return; }
+    if (method.isEmpty()) { method = "Unknown"; }          // 不强制失败
+    if (amount <= 0.0) { sendError(sock, "invalid amount"); return; }
+    if (status != "success" && status != "pending" && status != "failed") status = "success";
+
+    // 1) 打开数据库
+    QSqlDatabase db = QSqlDatabase::database();
+    if (!db.isValid() || !db.isOpen()) {
+        qWarning() << "[processPayment] database not open";
+        sendError(sock, "database not open");
+        return;
+    }
+
+    // 2) 事务
+    if (!db.transaction()) {
+        qWarning() << "[processPayment] begin tx failed:" << db.lastError().text();
+        // 不中断，继续
+    }
+
+    // 3) 检查订单存在
+    {
+        QSqlQuery chk(db);
+        static const char* sql_chk =
+            "SELECT order_id FROM orders WHERE order_id=:id LIMIT 1";
+        if (!chk.prepare(sql_chk)) { db.rollback(); sendError(sock, "数据库错误(prepare chk)"); return; }
+        chk.bindValue(":id", orderId);
+        if (!chk.exec() || !chk.next()) { db.rollback(); sendError(sock, "订单不存在"); return; }
+    }
+
+    // 4) 插入 payment（触发器可更新订单状态；若无触发器，后面我们会自行汇总）
+    int paymentId = -1;
+    {
+        QSqlQuery ins(db);
+        static const char* sql_ins =
+            "INSERT INTO payments(order_id, method, amount, status, transaction_ref) "
+            "VALUES(:o,:m,:a,:s,:t)";
+        if (!ins.prepare(sql_ins))  { db.rollback(); sendError(sock, "数据库错误(prepare ins)"); return; }
+        ins.bindValue(":o", orderId);
+        ins.bindValue(":m", method);
+        ins.bindValue(":a", amount);
+        ins.bindValue(":s", status);
+        ins.bindValue(":t", txref.isEmpty()? QVariant(QVariant::String) : QVariant(txref));
+
+        if (!ins.exec()) { db.rollback(); sendError(sock, "支付写入失败"); return; }
+
+        // lastInsertId 更通用；如需 SQLite 兼容也可备用查询 last_insert_rowid()
+        const QVariant lid = ins.lastInsertId();
+        if (lid.isValid()) {
+            paymentId = lid.toInt();
+        } else {
+            QSqlQuery rid(db);
+            if (rid.exec("SELECT last_insert_rowid()") && rid.next())
+                paymentId = rid.value(0).toInt();
+        }
+    }
+
+    // 5) 汇总订单金额与已付
+    double total = 0.0, paid = 0.0; QString orderStatus;
+    {
+        // 已成功支付金额
+        QSqlQuery qp(db);
+        static const char* sql_paid =
+            "SELECT COALESCE(SUM(amount),0) FROM payments WHERE order_id=:o AND status='success'";
+        qp.prepare(sql_paid); qp.bindValue(":o", orderId);
+        if (qp.exec() && qp.next()) paid = qp.value(0).toDouble();
+
+        // 订单概要
+        QSqlQuery qo(db);
+        static const char* sql_ord =
+            "SELECT status, total_amount FROM orders WHERE order_id=:o LIMIT 1";
+        qo.prepare(sql_ord); qo.bindValue(":o", orderId);
+        if (qo.exec() && qo.next()) {
+            orderStatus = qo.value("status").toString();
+            total       = qo.value("total_amount").toDouble();
+        }
+    }
+    const double due = std::max(0.0, total - paid);
+
+    // 6) 可选：返回订单明细（购物车药品）
+    QJsonArray items;
+    {
+        QSqlQuery qi(db);
+        static const char* sql_items =
+            "SELECT medicine_id, item_name, quantity, unit_price, amount "
+            "FROM order_items WHERE order_id=:o ORDER BY rowid";
+        if (qi.prepare(sql_items)) {
+            qi.bindValue(":o", orderId);
+            if (qi.exec()) {
+                while (qi.next()) {
+                    items.append(QJsonObject{
+                        {"medicine_id", qi.value("medicine_id").toInt()},
+                        {"name",        qi.value("item_name").toString()},
+                        {"qty",         qi.value("quantity").toInt()},
+                        {"unit_price",  qi.value("unit_price").toDouble()},
+                        {"amount",      qi.value("amount").toDouble()}
+                    });
+                }
+            }
+        }
+    }
+
+    // 7) 提交事务
+    if (!db.commit()) {
+        const QString err = db.lastError().text();
+        qWarning() << "[processPayment] commit failed:" << err;
+        sendError(sock, QString("commit failed: %1").arg(err));
+        return;
+    }
+
+    // 8) 构造响应（type 仍用 "processPayment"，便于 Widget 识别）
+    sendJson(sock, QJsonObject{
+        {"type","processPayment"},
+        {"success", status=="success"},
+        {"message", status=="success" ? "支付已记录"
+                                      : (status=="pending" ? "支付待确认" : "支付失败")},
+        {"payment", QJsonObject{
+            {"payment_id", paymentId},
+            {"order_id",   orderId},
+            {"method",     method},
+            {"amount",     amount},
+            {"status",     status},
+            {"transaction_ref", txref}
+        }},
+        {"order", QJsonObject{
+            {"order_id",     orderId},
+            {"status",       orderStatus},
+            {"total_amount", total},
+            {"paid_amount",  paid},
+            {"due_amount",   due}
+        }},
+        {"items", items} // 可选：这边列表，包含多个用户选中的购买车药物
     });
 }
 
