@@ -231,8 +231,8 @@ QWidget* ProfileWidget::createBasicInfoForm() {
     birthAgeLayout->addStretch();
 
     idNumberLineEdit = new QLineEdit();
-    idNumberLineEdit->setReadOnly(true);
-    idNumberLineEdit->setProperty("class", "readOnlyField");
+    idNumberLineEdit->setReadOnly(false);
+    // idNumberLineEdit->setProperty("class", "readOnlyField");
 
     bloodTypeComboBox = new QComboBox();
     bloodTypeComboBox->addItems({"A","B","AB","O","其他"});
@@ -409,6 +409,25 @@ void ProfileWidget::initStyleSheets() {
         #sectionBox QLabel {
             font-size: 14px;
             color: #4A5568;
+        }
+                QComboBox::drop-down {
+            border: none;
+            width: 20px;
+        }
+        QComboBox::down-arrow {
+            image: none;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 5px solid #4A5568;
+            margin-right: 8px;
+        }
+        QComboBox QAbstractItemView {
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
+            background-color: white;
+            selection-background-color: #EBF8FF;
+            selection-color: #2D3748;
+            padding: 4px 0px;
         }
         QLineEdit, QComboBox, QDateEdit {
             border: 1px solid #CBD5E0;
