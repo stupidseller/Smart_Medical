@@ -31,14 +31,14 @@ void MedicineDetailDialog::setupUI(const Medicine &medicine)
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // **已修改：移除包含关闭按钮的顶部信息栏**
-    /*
+    // 头部信息
     QFrame *headerFrame = new QFrame();
     headerFrame->setObjectName("detailHeaderFrame");
     QHBoxLayout *headerLayout = new QHBoxLayout(headerFrame);
     headerLayout->setContentsMargins(20, 15, 20, 15);
     headerLayout->setSpacing(15);
 
+    // 关闭按钮
     QPushButton *closeButton = new QPushButton("×");
     closeButton->setObjectName("closeButton");
     closeButton->setFixedSize(30, 30);
@@ -46,7 +46,6 @@ void MedicineDetailDialog::setupUI(const Medicine &medicine)
 
     headerLayout->addStretch();
     headerLayout->addWidget(closeButton);
-    */
 
     // 药品基本信息
     QFrame *infoFrame = new QFrame();
@@ -151,8 +150,7 @@ void MedicineDetailDialog::setupUI(const Medicine &medicine)
         buttonLayout->addWidget(purchaseButton);
     }
 
-    // **已修改：移除 headerFrame 的添加**
-    // mainLayout->addWidget(headerFrame);
+    mainLayout->addWidget(headerFrame);
     mainLayout->addWidget(infoFrame);
     mainLayout->addWidget(scrollArea);
     mainLayout->addWidget(buttonFrame);
@@ -530,59 +528,35 @@ QWidget* MedicineSearchWidget::createMedicineCard(const Medicine &medicine)
 
     return card;
 }
-
+//load data xin gaide
 void MedicineSearchWidget::loadMedicineData()
 {
-    allMedicines = {
-            {
-                    "阿莫西林胶囊",
-                    "用于敏感菌所致的感染",
-                    "处方药",
-                    25.80,
-                    "0.25g*24粒",
-                    "某某制药有限公司",
-                    "用于敏感菌所致的感染，如呼吸道感染、泌尿系统感染等。",
-                    "口服。成人一次0.5g，每6～8小时1次，一日剂量不超过4g。",
-                    "#FEB2B2",
-                    true
-            },
-            {
-                    "板蓝根颗粒",
-                    "清热解毒，凉血利咽",
-                    "非处方药",
-                    18.50,
-                    "10g*20袋",
-                    "某某药业有限公司",
-                    "清热解毒，凉血利咽。用于肺胃热盛所致的咽喉肿痛、口咽干燥。",
-                    "开水冲服。一次1-2袋，一日3-4次。",
-                    "#9AE6B4",
-                    false
-            },
-            {
-                    "硝苯地平控释片",
-                    "用于高血压、冠心病治疗",
-                    "处方药",
-                    42.30,
-                    "30mg*7片",
-                    "某某制药股份有限公司",
-                    "用于高血压、冠心病治疗",
-                    "口服。成人一次0.5g，每6～8小时1次，一日剂量不超过4g。",
-                    "#FEB2B2",
-                    true
-            },
-            {
-                    "维生素C片",
-                    "补充维生素C，增强免疫力",
-                    "非处方药",
-                    15.90,
-                    "100mg*100片",
-                    "某某保健品有限公司",
-                    "补充维生素C，增强免疫力",
-                    "口服。成人一次1-2片，一日1-3次。",
-                    "#9AE6B4",
-                    false
-            }
-    };
+    // 把请求交给 Api 去发
+    emit requestLoadMedicineData();
+}
+void MedicineSearchWidget::onLoadMedicineDataOk(const QJsonArray &medicines)
+{
+    allMedicines.clear();
+    allMedicines.reserve(medicines.size());
+
+    for (const QJsonValue &v : medicines) {
+        const QJsonObject o = v.toObject();
+        Medicine row;
+        row.name           = o.value("name").toString();
+        row.description    = o.value("description").toString();
+        row.type           = o.value("type").toString();
+        row.isPrescription = o.value("is_prescription").toBool();
+        row.price          = o.value("price").toDouble();
+        row.specifications = o.value("specifications").toString();
+        row.manufacturer   = o.value("manufacturer").toString();
+        row.effects        = o.value("effects").toString();
+        row.dosage         = o.value("dosage").toString();
+        row.iconColor      = o.value("icon_color").toString();
+
+        allMedicines.push_back(std::move(row));
+    }
+
+    refreshUi();
 }
 
 void MedicineSearchWidget::onSearchClicked()

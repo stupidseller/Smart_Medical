@@ -44,20 +44,13 @@ private:
     void handleMessage(QTcpSocket *sock, const QJsonObject &obj);
     void handleLogin(QTcpSocket *sock, const QJsonObject &obj);
     void handleRegister(QTcpSocket *sock, const QJsonObject &obj);
-
-    // 新增：把cpp里已有实现的函数声明补齐
     void handleGetPatientProfile(QTcpSocket *sock, const QJsonObject &obj);
     void handleUpdatePatientProfile(QTcpSocket *sock, const QJsonObject &obj);
+    // bu yao dong shang mian de yijing ok
 
-    void handleListDepartments(QTcpSocket *sock, const QJsonObject &obj);
-    void handleListDoctors(QTcpSocket *sock, const QJsonObject &obj);
-    void handleListAvailableSlots(QTcpSocket *sock, const QJsonObject &obj);
-    void handleBookAppointment(QTcpSocket *sock, const QJsonObject &obj);
-    void handleSearchMedicines(QTcpSocket *sock, const QJsonObject &obj);
-    void handleEnsurePendingOrder(QTcpSocket *sock, const QJsonObject &obj);
-    void handleAddMedicineToOrder(QTcpSocket *sock, const QJsonObject &obj);
-    void handleGetOrderDetail(QTcpSocket *sock, const QJsonObject &obj);
-    void handleCreatePayment(QTcpSocket *sock, const QJsonObject &obj);
+    void handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj);
+    void handleLoadOrderDetails(QTcpSocket *sock, const QJsonObject &obj);
+    void handleloadAvailableDoctors(QTcpSocket *sock, const QJsonObject &obj);
 
     // --- reply helpers ---
     void sendJson(QTcpSocket *sock, const QJsonObject &obj);

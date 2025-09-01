@@ -1,6 +1,8 @@
 #include "src/ui/widgets/common/login_dialog.h"
 #include "src/ui/widgets/widget.h"
 #include "src/ui/widgets/patient/patient_main_window.h"
+#include "src/ui/widgets/patient/medicine_search_widget.h"
+#include "src/ui/widgets/patient/online_payment_widget.h"
 #include <QApplication>
 #include <QMessageBox>
 #include <QPointer>
@@ -83,6 +85,55 @@ int main(int argc, char *argv[])
         QMessageBox::warning(&loginDialog, "注册失败",
                              msg.isEmpty() ? "请检查注册信息" : msg);
     });
+    //shang mian bu yunxu xiugai, yijing ok
+    MedicineSearchWidget medWidget;
+
+    // 1) Widget 想加载 -> 让 Api 去发请求
+    QObject::connect(&medWidget, &MedicineSearchWidget::requestLoadMedicineData,
+                     &api,      &Api::loadMedicineData);
+
+    // 2) Api 收到服务器的 ok -> 喂给 Widget
+    QObject::connect(&api,      &Api::loadMedicineDataOk,
+                     &medWidget,&MedicineSearchWidget::onLoadMedicineDataOk);
+
+    // （可选）建立 socket 连接
+    // api.connectToServer(QHostAddress::LocalHost, 12345);
+
+    medWidget.show();
+
+    // 随界面启动就加载一次（或在按钮点击等时机调用）
+    medWidget.loadMedicineData();
+
+    // ///////////////////////////////////
+    // 1) Widget 发起 -> Api 发送请求
+    QObject::connect(&widget, &OnlinePaymentWidget::requestLoadOrderDetails,
+                     &api,    [&api](){ api.loadOrderDetails(); });
+
+    // 2) Api 收到服务器响应 -> 喂给 Widget
+    QObject::connect(&api,    &Api::loadOrderDetailsOk,
+                     &widget, &OnlinePaymentWidget::onLoadOrderDetailsOk);
+    widget.show();
+
+    // 启动即加载（也可改成按钮触发）
+    widget.loadOrderDetails();
+    // ////////////////////////////////
+    AppointmentBookingWidget widget;
+
+    // 1) Widget 请求 -> Api 发送
+    QObject::connect(&widget, &AppointmentBookingWidget::requestLoadAvailableDoctors,
+                     &api,    &Api::loadAvailableDoctors);
+
+    // 2) Api 收到响应 -> 喂给 Widget
+    QObject::connect(&api,    &Api::loadAvailableDoctorsOk,
+                     &widget, &AppointmentBookingWidget::onLoadAvailableDoctorsOk);
+
+    // （可选）连接服务器
+    // api.connectToServer(QHostAddress::LocalHost, 12345);
+
+    widget.show();
+
+    // 启动即加载（也可做成按钮）
+    widget.loadAvailableDoctors();
 
     return a.exec();
 }

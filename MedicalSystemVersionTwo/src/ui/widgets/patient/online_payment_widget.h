@@ -4,45 +4,58 @@
 #include <QWidget>
 #include <QMap>
 #include <QString>
+#include <QJsonObject>
 
-// 前置声明
 class QLabel;
 class QRadioButton;
 class QPushButton;
 class QTimer;
-class QPropertyAnimation; // 用于模拟加载动画
+class QVBoxLayout;
 
-// 订单详情结构体 (模拟后端数据)
+// ★ 前置声明“API”类（你的服务器端窗口类）
+class Widget;
+
 struct OrderInfo {
     QString orderId;
     QString createTime;
     QString patientName;
     QString department;
     QString doctorName;
-    QMap<QString, double> feeDetails; // 费用明细，例如 {"挂号费", 25.00}
-    double discount;
-    double totalAmount;
+    QMap<QString,double> feeDetails;
+    double discount = 0.0;
+    double totalAmount = 0.0;
 };
 
 class OnlinePaymentWidget : public QWidget
 {
-Q_OBJECT
-
+    Q_OBJECT                         // ★ 必须有！
 public:
     explicit OnlinePaymentWidget(QWidget *parent = nullptr);
+    explicit OnlinePaymentWidget(Widget *api, int patientId, QWidget *parent = nullptr);
     ~OnlinePaymentWidget();
+    // xiamian xinde
+    void loadOrderDetails();
 
 signals:
-    void backRequested(); // 返回首页
-    void paymentCompleted(); // 支付完成（成功或失败）
+    void backRequested();
+    void paymentCompleted();
+    //
+    void requestLoadOrderDetails();
+
+public slots:
+    void onLoadOrderDetailsOk(const QJsonArray &orders); //
 
 private slots:
-    void onConfirmPaymentClicked(); // 确认支付按钮点击
-    void onPaymentProcessFinished(); // 支付处理完成（模拟3秒后）
-    void updatePaymentStatusText(); // 更新支付处理中的文字
+    void onConfirmPaymentClicked();
+    void onPaymentProcessFinished();
+    void updatePaymentStatusText();
+    void onEnsureOrderReady(int orderId);
+    void onOrderDetailLoaded(const QJsonObject &order);
+    void onPaymentProcessed(bool ok, const QString &msg, const QJsonObject &payload);
+
 protected:
-    // 重写 QWidget 的 resizeEvent 事件，以便在窗口大小变化时更新加载动画遮罩的大小
     void resizeEvent(QResizeEvent *event) override;
+
 private:
     void initUI();
     void initStyleSheets();
@@ -50,36 +63,41 @@ private:
     QWidget* createOrderInfoPanel(const OrderInfo &order);
     QWidget* createPaymentMethodPanel();
 
-    // --- 后端交互 (伪代码) ---
-    void loadOrderDetails(); // 加载订单详情
-    void processPayment(int paymentMethod); // 处理支付请求
+    OrderInfo currentOrder;
+    void processPayment(int way);
+    void refreshUi();
+private:
+    // —— UI 成员 ——
+    QLabel *orderIdLabel = nullptr;
+    QLabel *createTimeLabel = nullptr;
+    QLabel *patientNameLabel = nullptr;
+    QLabel *departmentLabel = nullptr;
+    QLabel *doctorNameLabel = nullptr;
 
-    // UI 控件成员
-    QLabel *orderIdLabel;
-    QLabel *createTimeLabel;
-    QLabel *patientNameLabel;
-    QLabel *departmentLabel;
-    QLabel *doctorNameLabel;
+    QLabel *registrationFeeLabel = nullptr;
+    QLabel *consultationFeeLabel = nullptr;
+    QLabel *medicineFeeLabel = nullptr;
+    QLabel *examinationFeeLabel = nullptr;
+    QLabel *discountLabel = nullptr;
+    QLabel *totalAmountLabel = nullptr;
 
-    QLabel *registrationFeeLabel;
-    QLabel *consultationFeeLabel;
-    QLabel *medicineFeeLabel;
-    QLabel *examinationFeeLabel;
-    QLabel *discountLabel;
-    QLabel *totalAmountLabel;
+    QRadioButton *wechatPayRadio = nullptr;
+    QRadioButton *alipayRadio = nullptr;
+    QPushButton *confirmPaymentButton = nullptr;
 
-    QRadioButton *wechatPayRadio;
-    QRadioButton *alipayRadio;
-    QPushButton *confirmPaymentButton;
+    QWidget *loadingOverlay = nullptr;
+    QLabel *loadingSpinner = nullptr;
+    QLabel *loadingText = nullptr;
+    QTimer *paymentProcessTimer = nullptr;
+    int loadingTextDotCount = 0;
 
-    // 加载动画相关
-    QWidget *loadingOverlay; // 半透明遮罩
-    QLabel *loadingSpinner; // 旋转动画
-    QLabel *loadingText;    // “支付处理中”文字
-    QTimer *paymentProcessTimer; // 模拟支付处理时间
-    int loadingTextDotCount; // 用于动态显示点点点
+    QVBoxLayout *itemsListLayout = nullptr;
 
-    OrderInfo currentOrder; // 当前订单数据
+
+    // —— 后端相关 ——
+    Widget *m_api = nullptr;
+    int m_patientId = -1;
+    int m_orderId = -1;
 };
 
 #endif // ONLINE_PAYMENT_WIDGET_H

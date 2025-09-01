@@ -208,16 +208,16 @@ QWidget* CommunicationWidget::createChatPanel() {
     doctorDetailsLayout->addWidget(currentDoctorLabel);
     doctorDetailsLayout->addWidget(doctorStatusLabel);
 
-    // **已修改：移除“在线”状态指示器**
-    // QLabel *onlineIndicator = new QLabel("在线");
-    // onlineIndicator->setObjectName("onlineIndicator");
+    // 在线状态指示器
+    QLabel *onlineIndicator = new QLabel("在线");
+    onlineIndicator->setObjectName("onlineIndicator");
 
     doctorInfoLayout->addWidget(backToDoctorListButton);
     doctorInfoLayout->addSpacing(10);
     doctorInfoLayout->addWidget(doctorAvatar);
     doctorInfoLayout->addLayout(doctorDetailsLayout);
     doctorInfoLayout->addStretch();
-    // doctorInfoLayout->addWidget(onlineIndicator); // **已修改：移除**
+    doctorInfoLayout->addWidget(onlineIndicator);
 
     layout->addWidget(doctorInfo);
 
@@ -329,12 +329,12 @@ QWidget* CommunicationWidget::createMessageWidget(const ChatMessage &message) {
 void CommunicationWidget::loadDoctorList() {
     if (!doctorListLayout) return;
 
-    // **已修改：移除 isOnline 初始化**
+    // 医生数据
     QList<DoctorContact> doctors = {
-            {"王医生", "心血管内科", "主任医师", "您好，有什么可以帮您的？", "16:19"},
-            {"李医生", "消化内科", "副主任医师", "", ""},
-            {"张医生", "骨科", "主治医师", "", ""},
-            {"刘医生", "妇产科", "主治医师", "", ""}
+            {"王医生", "心血管内科", "主任医师", true, "您好，有什么可以帮您的？", "16:19"},
+            {"李医生", "消化内科", "副主任医师", false, "", ""},
+            {"张医生", "骨科", "主治医师", true, "", ""},
+            {"刘医生", "妇产科", "主治医师", false, "", ""}
     };
 
     for(const auto &doctor : doctors) {

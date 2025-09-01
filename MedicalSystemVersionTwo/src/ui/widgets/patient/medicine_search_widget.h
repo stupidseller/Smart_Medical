@@ -17,14 +17,14 @@
 struct Medicine {
     QString name;
     QString description;
-    QString type;        // "处方药" 或 "非处方药"
-    double price;
+    QString type;
+    bool    isPrescription = false;
+    double  price = 0.0;
     QString specifications;
     QString manufacturer;
     QString effects;
     QString dosage;
-    QString iconColor;   // 药品图标颜色
-    bool isPrescription; // true为处方药，false为非处方药
+    QString iconColor;
 };
 
 class MedicineDetailDialog : public QDialog
@@ -33,10 +33,11 @@ Q_OBJECT
 
 public:
     explicit MedicineDetailDialog(const Medicine &medicine, QWidget *parent = nullptr);
+    // xin jia de
 
 signals:
     void purchaseRequested(const QString &medicineName);
-
+    void requestLoadMedicineData(); //
 private:
     void setupUI(const Medicine &medicine);
     void initStyles();
@@ -49,21 +50,24 @@ Q_OBJECT
 public:
     explicit MedicineSearchWidget(QWidget *parent = nullptr);
     ~MedicineSearchWidget();
-
+    void loadMedicineData();//
 signals:
     void backRequested();
-
+    void requestLoadMedicineData();//
+public slots:
+    void onLoadMedicineDataOk(const QJsonArray &medicines);//
 private slots:
     void onSearchClicked();
     void onCategoryChanged();
     void onDetailClicked(const Medicine &medicine);
     void onPurchaseClicked(const Medicine &medicine);
     void onBatchPurchaseClicked();
-
+private:
+    QVector<Medicine> allMedicines; // //你可以改为自己的 Model
+        void refreshUi();
 private:
     void initUI();
     void initStyleSheets();
-    void loadMedicineData();
     void updateMedicineList();
     void updateSelectedCount();
 
@@ -89,7 +93,6 @@ private:
     QLabel *selectedCountLabel;
     QPushButton *batchPurchaseButton;
 
-    QList<Medicine> allMedicines;
     QList<QCheckBox*> medicineCheckboxes;
     QString currentCategory;
 
