@@ -3,20 +3,17 @@
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QLabel>
-#include <widget.h>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QFrame>
 #include <QLineEdit>
-#include <QJsonArray>
 #include <QButtonGroup>
-#include <QJsonObject>
 #include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QSpacerItem>
 #include <QMessageBox>
-class Widget;
+
 // 药品详情对话框实现
 MedicineDetailDialog::MedicineDetailDialog(const Medicine &medicine, QWidget *parent)
         : QDialog(parent)
@@ -34,14 +31,14 @@ void MedicineDetailDialog::setupUI(const Medicine &medicine)
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // 头部信息
+    // **已修改：移除包含关闭按钮的顶部信息栏**
+    /*
     QFrame *headerFrame = new QFrame();
     headerFrame->setObjectName("detailHeaderFrame");
     QHBoxLayout *headerLayout = new QHBoxLayout(headerFrame);
     headerLayout->setContentsMargins(20, 15, 20, 15);
     headerLayout->setSpacing(15);
 
-    // 关闭按钮
     QPushButton *closeButton = new QPushButton("×");
     closeButton->setObjectName("closeButton");
     closeButton->setFixedSize(30, 30);
@@ -49,6 +46,7 @@ void MedicineDetailDialog::setupUI(const Medicine &medicine)
 
     headerLayout->addStretch();
     headerLayout->addWidget(closeButton);
+    */
 
     // 药品基本信息
     QFrame *infoFrame = new QFrame();
@@ -153,7 +151,8 @@ void MedicineDetailDialog::setupUI(const Medicine &medicine)
         buttonLayout->addWidget(purchaseButton);
     }
 
-    mainLayout->addWidget(headerFrame);
+    // **已修改：移除 headerFrame 的添加**
+    // mainLayout->addWidget(headerFrame);
     mainLayout->addWidget(infoFrame);
     mainLayout->addWidget(scrollArea);
     mainLayout->addWidget(buttonFrame);
@@ -231,9 +230,8 @@ void MedicineDetailDialog::initStyles()
 }
 
 // 主搜索界面实现
-MedicineSearchWidget::MedicineSearchWidget(Widget *api, int patientId, QWidget *parent)
-    : QWidget(parent),
-      m_api(api),searchInput(nullptr), m_patientId(patientId), categoryGroup(nullptr),
+MedicineSearchWidget::MedicineSearchWidget(QWidget *parent)
+        : QWidget(parent), searchInput(nullptr), categoryGroup(nullptr),
           allButton(nullptr), prescriptionButton(nullptr), nonPrescriptionButton(nullptr),
           medicineScrollArea(nullptr), medicineListLayout(nullptr),
           selectedCountLabel(nullptr), batchPurchaseButton(nullptr),
@@ -244,17 +242,6 @@ MedicineSearchWidget::MedicineSearchWidget(Widget *api, int patientId, QWidget *
     initUI();
     initStyleSheets();
     updateMedicineList();
-    if (m_api && m_patientId > 0) {
-            // 绑定信号
-            connect(m_api, &Widget::ensurePendingOrderReady, this, &MedicineSearchWidget::onEnsureOrderReady);
-            connect(m_api, &Widget::orderItemAdded, this, &MedicineSearchWidget::onOrderItemAdded);
-            connect(m_api, &Widget::medicinesLoaded, this, &MedicineSearchWidget::onMedicinesLoaded); // 可选
-
-            // 确保有购物单
-            m_api->sendEnsurePendingOrder(m_patientId);
-            // 若要用数据库药品列表，下面这一句放开并去掉本地数据：
-            // m_api->sendSearchMedicines("", "", -1);
-        }
 }
 
 MedicineSearchWidget::~MedicineSearchWidget() {}
@@ -467,7 +454,6 @@ QWidget* MedicineSearchWidget::createMedicineCard(const Medicine &medicine)
 
     // 选择框（仅非处方药可选）
     QCheckBox *checkBox = new QCheckBox();
-    checkBox->setProperty("medName", medicine.name); // ★ 供批量购买读取名字
     checkBox->setObjectName("medicineCheckBox");
     checkBox->setFixedWidth(60);
     checkBox->setEnabled(!medicine.isPrescription);
@@ -603,9 +589,6 @@ void MedicineSearchWidget::onSearchClicked()
 {
     updateMedicineList();
 }
-void MedicineSearchWidget::onEnsureOrderReady(int orderId) {
-    m_orderId = orderId;
-}
 
 void MedicineSearchWidget::onCategoryChanged()
 {
@@ -628,74 +611,31 @@ void MedicineSearchWidget::onDetailClicked(const Medicine &medicine)
     dialog.exec();
 }
 
-void MedicineSearchWidget::onOrderItemAdded(bool ok, const QString &msg, const QJsonObject &order)
-{
-    if (!ok) {
-        QMessageBox::warning(this, "加入失败", msg.isEmpty()? "请稍后再试" : msg);
-        return;
-    }
-    // 友好提示
-    QMessageBox::information(this, "已加入购买单", "药品已加入购买单。可前往“线上支付”查看并支付。");
-    // 清勾选
-    for (QCheckBox *cb : medicineCheckboxes) cb->setChecked(false);
-    updateSelectedCount();
-}
-
-// （可选）如果用后端药品列表，这里把 allMedicines 替换
-void MedicineSearchWidget::onMedicinesLoaded(const QJsonArray &items)
-{
-    allMedicines.clear();
-    for (const auto &v : items) {
-        const auto o = v.toObject();
-        Medicine m;
-        m.name = o.value("name").toString();
-        m.description = o.value("description").toString();
-        m.type = o.value("type").toString();
-        m.price = o.value("price").toDouble();
-        m.specifications = o.value("specifications").toString();
-        m.manufacturer = o.value("manufacturer").toString();
-        m.effects = o.value("effects").toString();
-        m.dosage = o.value("dosage").toString();
-        m.iconColor = o.value("icon_color").toString();
-        m.isPrescription = o.value("is_prescription").toInt() == 1;
-        allMedicines.append(m);
-    }
-    updateMedicineList();
-}
 void MedicineSearchWidget::onPurchaseClicked(const Medicine &medicine)
 {
-    if (!m_api || m_orderId <= 0) {
-        QMessageBox::warning(this, "提示", "购买单未就绪，请稍后再试");
-        return;
-    }
-    // 用药名（唯一）加入购物单；数量先固定 1
-    m_api->sendAddMedicineToOrderByName(m_orderId, medicine.name, 1);
+    QMessageBox::information(this, "购买成功", QString("已成功购买 %1").arg(medicine.name));
 }
-// 批量购买：遍历勾选项加入购买单
+
 void MedicineSearchWidget::onBatchPurchaseClicked()
 {
-    if (!m_api || m_orderId <= 0) {
-        QMessageBox::warning(this, "提示", "购买单未就绪，请稍后再试");
-        return;
-    }
     int selectedCount = 0;
     for (QCheckBox *checkBox : medicineCheckboxes) {
         if (checkBox->isChecked()) {
-            // 从复选框向上找这条卡片对应的名字 label
-            // 这里因为你的布局写法较自由，最安全是：在 createMedicineCard 时把 name 放到 checkBox 的 property
             selectedCount++;
         }
     }
-    // 简化：我们在 createMedicineCard 里给 checkBox 设置 "medName" 属性：
-    //   checkBox->setProperty("medName", medicine.name);
-    for (QCheckBox *cb : medicineCheckboxes) {
-        if (cb->isChecked()) {
-            const QString name = cb->property("medName").toString();
-            if (!name.isEmpty()) m_api->sendAddMedicineToOrderByName(m_orderId, name, 1);
+
+    if (selectedCount > 0) {
+        QMessageBox::information(this, "批量购买", QString("已成功购买 %1 种药品").arg(selectedCount));
+
+        // 清空选择
+        for (QCheckBox *checkBox : medicineCheckboxes) {
+            checkBox->setChecked(false);
         }
+        updateSelectedCount();
     }
-    // 不再本地清空勾选，等服务端确认再提示
 }
+
 void MedicineSearchWidget::updateMedicineList()
 {
     // 清空现有列表

@@ -17,7 +17,7 @@ struct DoctorContact {
     QString name;
     QString department;
     QString title;
-    bool isOnline;
+    // 已移除：bool isOnline;
     QString lastMessage;
     QString lastTime;
 };

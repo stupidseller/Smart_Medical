@@ -13,7 +13,6 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QTableWidget>
-class Widget;
 
 struct Medicine {
     QString name;
@@ -48,7 +47,7 @@ class MedicineSearchWidget : public QWidget
 Q_OBJECT
 
 public:
-    explicit MedicineSearchWidget(Widget *api, int patientId, QWidget *parent = nullptr);
+    explicit MedicineSearchWidget(QWidget *parent = nullptr);
     ~MedicineSearchWidget();
 
 signals:
@@ -60,10 +59,7 @@ private slots:
     void onDetailClicked(const Medicine &medicine);
     void onPurchaseClicked(const Medicine &medicine);
     void onBatchPurchaseClicked();
-    // 新增：API回调
-    void onEnsureOrderReady(int orderId);
-    void onOrderItemAdded(bool ok, const QString &msg, const QJsonObject &order);
-    void onMedicinesLoaded(const QJsonArray &items); // 若你要用后端列表替代本地
+
 private:
     void initUI();
     void initStyleSheets();
@@ -99,9 +95,6 @@ private:
 
     // 底部提示栏
     QFrame *warningFrame;
-    Widget *m_api = nullptr;
-    int     m_patientId = -1;
-    int     m_orderId = -1;
 };
 
 #endif // MEDICINE_SEARCH_WIDGET_H

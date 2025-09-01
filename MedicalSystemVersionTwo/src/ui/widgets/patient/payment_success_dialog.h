@@ -16,11 +16,9 @@ signals:
     void viewOrderClicked(); // 查看订单按钮被点击
     void backToDashboardClicked(); // 返回首页按钮被点击
 
-
 private slots:
     void onViewOrder();
     void onBackToDashboard();
-
 
 private:
     void initUI(double paymentAmount);

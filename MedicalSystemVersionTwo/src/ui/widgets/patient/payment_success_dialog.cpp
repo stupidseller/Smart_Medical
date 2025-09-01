@@ -1,19 +1,9 @@
 #include "payment_success_dialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QGridLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QDateTime>
-#include <QTimer>
-#include <QSvgWidget>
-#include <QLocale>
-#include <QMouseEvent>
-#include <QApplication>
-#include <QAction>
-#include <QEvent>
-#include <QPoint>
-#include <QMenu>
+#include <QIcon>
 #include <QPainter> // For custom painting if needed, but for simple icon, QLabel is enough
 
 PaymentSuccessDialog::PaymentSuccessDialog(double paymentAmount, QWidget *parent)
