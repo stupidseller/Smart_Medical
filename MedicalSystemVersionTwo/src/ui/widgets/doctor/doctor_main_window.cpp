@@ -42,7 +42,7 @@ void DoctorMainWindow::initUI() {
     this->resize(1024, 768);
 
     centralStack = new QStackedWidget(this);
-    // setCentralWidget(centralStack);                   // ✅ QMainWindow 的用法
+    setCentralWidget(centralStack);                   // ✅ QMainWindow 的用法
 
     // --- 仪表盘页面 ---
     dashboardPage = new QWidget();
