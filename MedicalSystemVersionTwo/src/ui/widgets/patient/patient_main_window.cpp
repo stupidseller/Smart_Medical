@@ -291,17 +291,19 @@ void PatientMainWindow::showAppointmentBookingWidget() {
         connect(appointmentPage, &AppointmentBookingWidget::backRequested,
                 this, [=]{ mainStackedWidget->setCurrentWidget(dashboardPage); });
 
-        // 页面 -> Widget：请求可预约医生
         connect(appointmentPage, &AppointmentBookingWidget::requestLoadAvailableDoctors,
                 api,            &Widget::loadAvailableDoctors);
         connect(api,            &Widget::loadAvailableDoctorsOk,
                 appointmentPage,&AppointmentBookingWidget::onLoadAvailableDoctorsOk);
-        QTimer::singleShot(0, appointmentPage, &AppointmentBookingWidget::loadAvailableDoctors);
 
         mainStackedWidget->addWidget(appointmentPage);
+
+        // ★ 连接完成后再触发第一次加载
+        QTimer::singleShot(0, appointmentPage, &AppointmentBookingWidget::loadAvailableDoctors);
     }
     mainStackedWidget->setCurrentWidget(appointmentPage);
 }
+
 
 void PatientMainWindow::showDoctorInfoWidget() {
     if (!doctorInfoPage) {
@@ -347,20 +349,25 @@ void PatientMainWindow::showMedicineSearchWidget() {
         connect(medicineSearchPage, &MedicineSearchWidget::backRequested,
                 this, [=]{ mainStackedWidget->setCurrentWidget(dashboardPage); });
 
+        // 加载药品数据
         connect(medicineSearchPage, &MedicineSearchWidget::requestLoadMedicineData,
                 api,                &Widget::loadMedicineData);
         connect(api,                &Widget::loadMedicineDataOk,
                 medicineSearchPage, &MedicineSearchWidget::onLoadMedicineDataOk);
 
-        // ★
-        QTimer::singleShot(0, medicineSearchPage, &MedicineSearchWidget::loadMedicineData);
-        // ★★★ 删除/注释你原来试图把 MedicineSearchWidget::onPurchaseClicked（私有槽）
-        //     强行连到 Widget::onPurchaseClicked 的几行——那是本次错误的根源之一。
+        // ★ 加入购物车（以前你连的是 onPurchaseClicked / processPayment 等）
+        connect(medicineSearchPage, &MedicineSearchWidget::purchaseCartRequested,
+                api,                &Widget::addToCart);              // 新增的 API 槽
+        connect(api,                &Widget::addToCartOk,
+                medicineSearchPage, &MedicineSearchWidget::onPurchaseClickedOk);
 
         mainStackedWidget->addWidget(medicineSearchPage);
+
+        QTimer::singleShot(0, medicineSearchPage, &MedicineSearchWidget::loadMedicineData);
     }
     mainStackedWidget->setCurrentWidget(medicineSearchPage);
 }
+
 
 void PatientMainWindow::showOnlinePaymentWidget() {
     if (!paymentPage) {

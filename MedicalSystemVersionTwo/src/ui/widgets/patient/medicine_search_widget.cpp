@@ -593,11 +593,18 @@ void MedicineSearchWidget::onCategoryChanged()
 void MedicineSearchWidget::onDetailClicked(const Medicine &medicine)
 {
     MedicineDetailDialog dialog(medicine, this);
-    connect(&dialog, &MedicineDetailDialog::purchaseRequested, this, [this](const QString &medicineName) {
-        QMessageBox::information(this, "购买成功", QString("已成功购买 %1").arg(medicineName));
-    });
+
+    // 原来这里弹“购买成功”，改为加入购物车
+    connect(&dialog, &MedicineDetailDialog::purchaseRequested,
+            this, [this, medicine](const QString &) {
+                onPurchaseClicked(medicine);  // 走统一加入购物车逻辑
+                QMessageBox::information(this, tr("已加入购买单"),
+                                         tr("已将 %1 加入购买单，可到“线上支付”查看并付款。").arg(medicine.name));
+            });
+
     dialog.exec();
 }
+
 //
 void MedicineSearchWidget::doOnPurchaseClicked(int patientId, const QJsonArray &cart, int orderId)
 {
@@ -606,9 +613,8 @@ void MedicineSearchWidget::doOnPurchaseClicked(int patientId, const QJsonArray &
 }
 void MedicineSearchWidget::onPurchaseClicked(const Medicine &medicine)
 {
-    // 手动构造 QJsonObject，不用聚合初始化
     QJsonObject item;
-    item["item_id"]   = 0;                 // 如有真实ID就填真实ID
+    item["item_id"]   = 0;
     item["item_name"] = medicine.name;
     item["amount"]    = medicine.price;
     item["qty"]       = 1;
@@ -616,8 +622,9 @@ void MedicineSearchWidget::onPurchaseClicked(const Medicine &medicine)
     QJsonArray cart;
     cart.append(item);
 
-    emit purchaseCartRequested(cart, 0);   // 这里先用 0，当你有真实 orderId 再替换
+    emit purchaseCartRequested(cart, 0);   // 0 表示新建/当前购物单
 }
+
 
 void MedicineSearchWidget::onPurchaseClickedOk(const QJsonObject &resp)
 {

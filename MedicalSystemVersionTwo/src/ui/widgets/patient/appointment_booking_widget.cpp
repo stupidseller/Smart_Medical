@@ -101,9 +101,29 @@ void AppointmentBookingWidget::onLoadAvailableDoctorsOk(const QJsonArray &doctor
 // --- UI 构建函数实现 ---
 void AppointmentBookingWidget::refreshUi()
 {
-    // TODO: 将 model_ 渲染到列表/表格/卡片中
-    qDebug() << "[AppointmentBookingWidget] loaded doctors:" << model_.size();
+    if (!doctorListLayout) return;
+
+    // 清空旧内容
+    QLayoutItem *it;
+    while ((it = doctorListLayout->takeAt(0)) != nullptr) {
+        if (it->widget()) it->widget()->deleteLater();
+        delete it;
+    }
+
+    if (model_.isEmpty()) {
+        auto *placeholder = new QLabel(tr("暂无可预约医生"));
+        placeholder->setAlignment(Qt::AlignCenter);
+        placeholder->setStyleSheet("color:#718096; padding:40px 0;");
+        doctorListLayout->addWidget(placeholder);
+        return;
+    }
+
+    for (const auto &d : model_) {
+        doctorListLayout->addWidget(createDoctorEntryWidget(d));
+    }
+    doctorListLayout->addStretch();
 }
+
 //
 QWidget* AppointmentBookingWidget::createFilterPanel() {
     QFrame* panel = new QFrame();

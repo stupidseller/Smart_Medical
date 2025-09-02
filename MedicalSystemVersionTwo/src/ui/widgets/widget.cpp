@@ -4,7 +4,7 @@
 #include <QJsonObject>
 #include <QDebug>
 #include <QAbstractSocket>
-
+#include <QDateTime>
 Widget::Widget(QObject *parent)
     : QObject(parent)
 {
@@ -129,7 +129,35 @@ void Widget::sendUpdatePatientProfile(const QJsonObject &patch){
     QJsonObject obj = patch; obj.insert("type","update_patient_profile"); sendJson(obj);
 }
 // shang mian yijing ok
+void Widget::addToCart(const QJsonArray &cart, int orderId)
+{
+    // 初始化购物车
+    if (m_cartOrder.isEmpty()) {
+        m_cartOrder["order_id"]     = 1001;
+        m_cartOrder["order_code"]   = "PO-" + QString::number(QDateTime::currentMSecsSinceEpoch());
+        m_cartOrder["create_time"]  = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+        m_cartOrder["patient_name"] = "张患者";
+        m_cartOrder["department"]   = "药房";
+        m_cartOrder["doctor_name"]  = "";
+        m_cartOrder["discount"]     = 0.0;
+        m_cartOrder["total_amount"] = 0.0;
+        m_cartOrder["items"]        = QJsonArray{};
+    }
 
+    QJsonArray items = m_cartOrder.value("items").toArray();
+    double total = m_cartOrder.value("total_amount").toDouble();
+
+    for (const auto &v : cart) {
+        const QJsonObject o = v.toObject();
+        items.append(o);
+        total += o.value("amount").toDouble() * o.value("qty").toInt(1);
+    }
+
+    m_cartOrder["items"]        = items;
+    m_cartOrder["total_amount"] = total;
+
+    emit addToCartOk(m_cartOrder);
+}
 void Widget::loadMedicineData()
 {
     // 客户端请求：type 必须与服务端分发字符串一致
@@ -139,11 +167,11 @@ void Widget::loadMedicineData()
 }
 void Widget::loadOrderDetails(int orderId)
 {
-    QJsonObject req{
-        {"type", "loadOrderDetails"}
-    };
-    if (orderId >= 0) req.insert("order_id", orderId);
-    sendJson(req);
+    Q_UNUSED(orderId);
+    QJsonArray arr;
+    if (!m_cartOrder.isEmpty())
+        arr.append(m_cartOrder);
+    emit loadOrderDetailsOk(arr);
 }
 void Widget::loadAvailableDoctors()
 {
@@ -174,17 +202,24 @@ void Widget::onPurchaseClicked(int patientId, const QJsonArray &cart, int orderI
     sendJson(req);
 }
 void Widget::processPayment(int orderId, const QString &method, double amount,
-                         const QString &status, const QString &txref)
+                            const QString &status, const QString &txref)
 {
-    QJsonObject req{
-        {"type",    "processPayment"},
-        {"order_id", orderId},
-        {"method",   method},
-        {"amount",   amount},
-        {"status",   status}
+    // 简易成功返回
+    QJsonObject resp;
+    resp["success"] = true;
+    resp["message"] = QString("已通过 %1 支付").arg(method);
+
+    // 清空购物车
+    QJsonObject order = m_cartOrder;
+    order["paid_amount"] = amount;
+    order["due_amount"]  = qMax(0.0, order.value("total_amount").toDouble() - amount);
+    resp["order"] = order;
+    resp["payment"] = QJsonObject{
+        {"method", method}, {"status", "success"}, {"txref", txref}
     };
-    if (!txref.isEmpty()) req.insert("transaction_ref", txref);
-    sendJson(req);
+
+    emit processPaymentOk(resp);
+    m_cartOrder = QJsonObject(); // 付款后清空
 }
 // xia mian zhi yunxu xiugai slotReadyRead
 // xiamian zhege if elseif
