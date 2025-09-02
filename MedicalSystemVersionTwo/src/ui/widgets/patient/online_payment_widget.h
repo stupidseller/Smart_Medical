@@ -66,9 +66,9 @@ private:
     QWidget* createHeader();
     QWidget* createOrderInfoPanel(const OrderInfo &order);
     QWidget* createPaymentMethodPanel();
-
+public:
     OrderInfo currentOrder;
-    void processPayment(int way);
+    void setPaymentMethod(int way);
     void refreshUi();
 private:
     // —— UI 成员 ——

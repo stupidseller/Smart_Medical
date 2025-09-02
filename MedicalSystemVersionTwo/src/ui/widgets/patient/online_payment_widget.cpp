@@ -22,7 +22,11 @@
 #include <QJsonArray>
 #include <QPropertyAnimation> // 用于更精细的动画控制
 #include <QRegularExpression>
-
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QVariant>   // 如果后面有 toVariant() 之类操作就留着
+#include <QDebug>
 OnlinePaymentWidget::OnlinePaymentWidget(QWidget *parent)
     : OnlinePaymentWidget(nullptr, -1, parent) {}
 
@@ -36,22 +40,10 @@ OnlinePaymentWidget::OnlinePaymentWidget(Widget *api, int patientId, QWidget *pa
     initUI();
     initStyleSheets();
 
-    if (m_api && m_patientId > 0) {
-        // 只接信号，不改 TCP 代码
-        connect(m_api, &Widget::ensurePendingOrderReady,
-                this,   &OnlinePaymentWidget::onEnsureOrderReady);
-        connect(m_api, &Widget::orderDetailLoaded,
-                this,   &OnlinePaymentWidget::onOrderDetailLoaded);
-        connect(m_api, &Widget::paymentProcessed,
-                this,   &OnlinePaymentWidget::onPaymentProcessed);
-
-        // 启动时确保有待支付订单
-        m_api->sendEnsurePendingOrder(m_patientId);
-    } else {
-        // 无后端：本地占位
-        loadOrderDetails();
-    }
+    // 不在这里直接连 m_api（避免依赖不存在的信号）
+    // 真实的数据流在 PatientMainWindow 里集中接线
 }
+
 
 
 OnlinePaymentWidget::~OnlinePaymentWidget() {}
@@ -394,9 +386,33 @@ void OnlinePaymentWidget::onConfirmPaymentClicked() {
     const QString method = wechatPayRadio && wechatPayRadio->isChecked()
                            ? QStringLiteral("wechat")
                            : QStringLiteral("alipay");
-    m_api->sendCreatePayment(m_orderId, method, amount);
+    doProcessPayment(m_orderId, method, amount);
 }
 
+// 根据 currentOrder 刷新左侧“订单信息”面板
+void OnlinePaymentWidget::refreshUi()
+{
+    if (orderIdLabel)     orderIdLabel->setText(currentOrder.orderId);
+    if (createTimeLabel)  createTimeLabel->setText(currentOrder.createTime);
+    if (patientNameLabel) patientNameLabel->setText(currentOrder.patientName);
+    if (departmentLabel)  departmentLabel->setText(currentOrder.department);
+    if (doctorNameLabel)  doctorNameLabel->setText(currentOrder.doctorName);
+
+    // 费用明细
+    auto fee = [&](const QString& key){ return currentOrder.feeDetails.value(key, 0.0); };
+    if (registrationFeeLabel) registrationFeeLabel->setText(QString("¥%1").arg(fee(QStringLiteral("挂号费")), 0, 'f', 2));
+    if (consultationFeeLabel) consultationFeeLabel->setText(QString("¥%1").arg(fee(QStringLiteral("诊查费")), 0, 'f', 2));
+    if (medicineFeeLabel)     medicineFeeLabel->setText(QString("¥%1").arg(fee(QStringLiteral("药品费")), 0, 'f', 2));
+    if (examinationFeeLabel)  examinationFeeLabel->setText(QString("¥%1").arg(fee(QStringLiteral("检查费")), 0, 'f', 2));
+
+    if (discountLabel)        discountLabel->setText(QString("¥%1").arg(currentOrder.discount, 0, 'f', 2));
+    if (totalAmountLabel)     totalAmountLabel->setText(QString("¥%1").arg(currentOrder.totalAmount, 0, 'f', 2));
+    if (confirmPaymentButton) confirmPaymentButton->setText(QStringLiteral("确认支付 ¥%1")
+                                                            .arg(currentOrder.totalAmount, 0, 'f', 2));
+
+    // 提示：如果你后续希望刷新“订单条目列表”，
+    // 可以把 items 缓存在一个成员里，然后在这里清空 itemsListLayout 后重建。
+}
 
 void OnlinePaymentWidget::updatePaymentStatusText() {
     loadingTextDotCount = (loadingTextDotCount + 1) % 4;
@@ -406,7 +422,8 @@ void OnlinePaymentWidget::updatePaymentStatusText() {
 
 void OnlinePaymentWidget::onEnsureOrderReady(int orderId) {
     m_orderId = orderId;
-    if (m_api) m_api->sendGetOrderDetail(orderId);
+    Q_UNUSED(orderId);
+    emit requestLoadOrderDetails();
 }
 
 void OnlinePaymentWidget::onPaymentProcessed(bool ok, const QString &msg, const QJsonObject &)

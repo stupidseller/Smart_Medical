@@ -2,10 +2,26 @@
 #define APPOINTMENT_BOOKING_WIDGET_H
 
 #include <QWidget>
-
+#include <QString>
+#include <QVector>
+#include <QList>
+#include <QJsonArray>
 // 前置声明
 class QVBoxLayout;
+struct AppointmentSlot {
+    QString label;   // 例如： "08-31 上午"
+    QString tip;     // 例如： "余号: 5" 或 "已约满"
+    int     remain = 0;
+};
 
+struct DoctorInfo {
+    int doctorId = 0;
+    QString name;
+    QString title;
+    QString department;
+    QString specialty;
+    QList<AppointmentSlot> timeSlots;
+};
 class AppointmentBookingWidget : public QWidget
 {
     Q_OBJECT

@@ -12,7 +12,11 @@
 #include <QTableWidget>
 #include <QComboBox>
 #include <QLineEdit>
-
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QVariant>   // 如果后面有 toVariant() 之类操作就留着
+#include <QDebug>
 struct DoctorProfile {
     QString name;
     QString title;

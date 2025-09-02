@@ -1,12 +1,12 @@
 #include "patient_main_window.h"
 #include "profile_widget.h"
-#include "profile_widget.h"
 #include "appointment_booking_widget.h"
 #include "doctor_info_widget.h"
 #include "communication_widget.h"
 #include "health_assessment_widget.h"
 #include "medicine_search_widget.h"
 #include "online_payment_widget.h"
+#include "widget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -288,9 +288,17 @@ void PatientMainWindow::showProfileWidget() {
 void PatientMainWindow::showAppointmentBookingWidget() {
     if (!appointmentPage) {
         appointmentPage = new AppointmentBookingWidget();
-        connect(appointmentPage, &AppointmentBookingWidget::backRequested, this, [=](){
-            mainStackedWidget->setCurrentWidget(dashboardPage);
-        });
+        connect(appointmentPage, &AppointmentBookingWidget::backRequested,
+                this, [=]{ mainStackedWidget->setCurrentWidget(dashboardPage); });
+
+        // 页面 -> Widget：请求可预约医生
+        connect(appointmentPage, &AppointmentBookingWidget::requestLoadAvailableDoctors,
+                api,            &Widget::loadAvailableDoctors);
+
+        // Widget -> 页面：返回可预约医生
+        connect(api,            &Widget::loadAvailableDoctorsOk,
+                appointmentPage,&AppointmentBookingWidget::onLoadAvailableDoctorsOk);
+
         mainStackedWidget->addWidget(appointmentPage);
     }
     mainStackedWidget->setCurrentWidget(appointmentPage);
@@ -299,9 +307,15 @@ void PatientMainWindow::showAppointmentBookingWidget() {
 void PatientMainWindow::showDoctorInfoWidget() {
     if (!doctorInfoPage) {
         doctorInfoPage = new DoctorInfoWidget();
-        connect(doctorInfoPage, &DoctorInfoWidget::backRequested, this, [=](){
-            mainStackedWidget->setCurrentWidget(dashboardPage);
-        });
+        connect(doctorInfoPage, &DoctorInfoWidget::backRequested,
+                this, [=]{ mainStackedWidget->setCurrentWidget(dashboardPage); });
+
+        connect(doctorInfoPage, &DoctorInfoWidget::requestLoadDoctorList,
+                api,            &Widget::loadDoctorList);
+
+        connect(api,            &Widget::loadDoctorListOk,
+                doctorInfoPage, &DoctorInfoWidget::onLoadDoctorListOk);
+
         mainStackedWidget->addWidget(doctorInfoPage);
     }
     mainStackedWidget->setCurrentWidget(doctorInfoPage);
@@ -329,25 +343,53 @@ void PatientMainWindow::showHealthAssessmentWidget() {
     mainStackedWidget->setCurrentWidget(healthAssessmentPage);
 }
 
-void PatientMainWindow::showMedicineSearchWidget()
-{
+void PatientMainWindow::showMedicineSearchWidget() {
     if (!medicineSearchPage) {
-        medicineSearchPage = new MedicineSearchWidget(api, patientId_, this);
-        connect(medicineSearchPage, &MedicineSearchWidget::backRequested, this, [=](){
-            mainStackedWidget->setCurrentWidget(dashboardPage);
-        });
+        medicineSearchPage = new MedicineSearchWidget(this);
+        connect(medicineSearchPage, &MedicineSearchWidget::backRequested,
+                this, [=]{ mainStackedWidget->setCurrentWidget(dashboardPage); });
+
+        connect(medicineSearchPage, &MedicineSearchWidget::requestLoadMedicineData,
+                api,                &Widget::loadMedicineData);
+
+        connect(api,                &Widget::loadMedicineDataOk,
+                medicineSearchPage, &MedicineSearchWidget::onLoadMedicineDataOk);
+
+        // ★★★ 删除/注释你原来试图把 MedicineSearchWidget::onPurchaseClicked（私有槽）
+        //     强行连到 Widget::onPurchaseClicked 的几行——那是本次错误的根源之一。
+
         mainStackedWidget->addWidget(medicineSearchPage);
     }
     mainStackedWidget->setCurrentWidget(medicineSearchPage);
 }
 
-void PatientMainWindow::showOnlinePaymentWidget()
-{
+void PatientMainWindow::showOnlinePaymentWidget() {
     if (!paymentPage) {
         paymentPage = new OnlinePaymentWidget(api, patientId_, this);
-        connect(paymentPage, &OnlinePaymentWidget::backRequested, this, [=](){
-            mainStackedWidget->setCurrentWidget(dashboardPage);
-        });
+        connect(paymentPage, &OnlinePaymentWidget::backRequested,
+                this, [=]{ mainStackedWidget->setCurrentWidget(dashboardPage); });
+
+        // 页面 -> Widget：加载订单明细
+        connect(paymentPage, &OnlinePaymentWidget::requestLoadOrderDetails,
+                this, [this]{
+                    api->loadOrderDetails();            // 用默认值 -1
+                });
+
+        // Widget -> 页面：订单明细结果
+        connect(api,          &Widget::loadOrderDetailsOk,
+                paymentPage,  &OnlinePaymentWidget::onLoadOrderDetailsOk);
+
+        // 页面 -> Widget：发起支付
+        using ProcSig5 = void (OnlinePaymentWidget::*)(int, const QString&, double, const QString&, const QString&);
+        connect(paymentPage,
+                static_cast<ProcSig5>(&OnlinePaymentWidget::processPayment),
+                api,
+                &Widget::processPayment);
+
+        // Widget -> 页面：支付结果
+        connect(api,          &Widget::processPaymentOk,
+                paymentPage,  &OnlinePaymentWidget::onProcessPaymentOk);
+
         mainStackedWidget->addWidget(paymentPage);
     }
     mainStackedWidget->setCurrentWidget(paymentPage);

@@ -57,6 +57,7 @@ public:
 signals:
     void backRequested();
     void requestLoadMedicineData();//
+    void purchaseCartRequested(const QJsonArray &cart, int orderId = 0);
 public slots:
     void onLoadMedicineDataOk(const QJsonArray &medicines);//
     void onPurchaseClickedOk(const QJsonObject &resp);

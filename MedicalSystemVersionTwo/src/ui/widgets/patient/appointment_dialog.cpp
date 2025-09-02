@@ -7,6 +7,14 @@
 #include <QPushButton>
 #include <QMessageBox>
 #include <QDebug>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonValue>
+#include <QJsonDocument>
+#include <QVariant>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QVariant>
 AppointmentDialog::AppointmentDialog(const QString &doctorName, const QString &doctorTitle, const QString &department, const QString &time, const QString &fee, QWidget *parent)
         : QDialog(parent),
           m_doctorName(doctorName),
@@ -71,11 +79,9 @@ QString AppointmentDialog::getDiseaseDescription() const {
 }
 
 void AppointmentDialog::onConfirmBooking() {
-    // 调用伪代码后端函数
-    if (submitAppointmentRequest()) {
-        accept(); // 如果提交成功，则关闭对话框并返回 QDialog::Accepted
-    }
+    accept(); // 关闭对话框；实际提交在外部（或用 doSubmitAppointmentRequest 触发）
 }
+
 //
 void AppointmentDialog::doSubmitAppointmentRequest(int patientId, int doctorId, int slotId, const QString &desc)
 {

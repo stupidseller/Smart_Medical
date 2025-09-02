@@ -9,7 +9,11 @@
 #include <QRadioButton>
 #include <QButtonGroup>
 #include <QSpacerItem>
-
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QVariant>   // 如果后面有 toVariant() 之类操作就留着
+#include <QDebug>
 HealthAssessmentWidget::HealthAssessmentWidget(QWidget *parent)
         : QWidget(parent), mainStack(nullptr), questionnairePage(nullptr),
           resultPage(nullptr), questionLayout(nullptr), submitButton(nullptr),

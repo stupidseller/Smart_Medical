@@ -13,6 +13,7 @@
 #include <QJsonParseError>
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QNetworkInterface>
 
 const int MAXLINK = 99;//最大连接数
 
@@ -262,7 +263,7 @@ void Widget::handleMessage(QTcpSocket *sock, const QJsonObject &obj)
 }
 // shang mian keyi jia, if / else if
 
-void handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj)
+void Widget::handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj)
 {
 
     QSqlDatabase db = QSqlDatabase::database();
@@ -317,7 +318,7 @@ void handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj)
     }
 
     QJsonArray arr;
-    arr.reserve(q.size() > 0 ? q.size() : 16);
+    // arr.reserve(q.size() > 0 ? q.size() : 16);
 
     while (q.next()) {
         // 注意：不要用变量名"type"遮蔽 JSON 的 key，这里用 drugType
@@ -361,7 +362,7 @@ void handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj)
     sendJson(sock, resp);
 }
 
-void handleLoadOrderDetails(QTcpSocket *sock, const QJsonObject &obj)
+void Widget::handleLoadOrderDetails(QTcpSocket *sock, const QJsonObject &obj)
 {
     QSqlDatabase db = QSqlDatabase::database();
     if (!db.isValid() || !db.isOpen()) {
@@ -434,7 +435,7 @@ ORDER BY o.created_at DESC
     }
 
     QJsonArray orders;
-    orders.reserve(q.size() > 0 ? q.size() : 8);
+   // orders.reserve(q.size() > 0 ? q.size() : 8);
 
     while (q.next()) {
         const int     oid          = q.value("order_id").toInt();
@@ -487,7 +488,7 @@ ORDER BY o.created_at DESC
     });
 }
 
-void handleloadAvailableDoctors(QTcpSocket *sock, const QJsonObject &obj)
+void Widget::handleloadAvailableDoctors(QTcpSocket *sock, const QJsonObject &obj)
 {
     Q_UNUSED(obj);
 
@@ -525,7 +526,7 @@ void handleloadAvailableDoctors(QTcpSocket *sock, const QJsonObject &obj)
     }
 
     QJsonArray doctors;
-    doctors.reserve(q.size() > 0 ? q.size() : 8);
+    // doctors.reserve(q.size() > 0 ? q.size() : 8);
 
     while (q.next()) {
         const int      doctorId   = q.value("doctor_id").toInt();
@@ -559,7 +560,7 @@ void handleloadAvailableDoctors(QTcpSocket *sock, const QJsonObject &obj)
     });
 }
 
-void handlesubmitAppointmentRequest(QTcpSocket *sock, const QJsonObject &obj)
+void Widget::handlesubmitAppointmentRequest(QTcpSocket *sock, const QJsonObject &obj)
 {
     // 1) 参数校验（与 UI 对齐）
     const int patientId = obj.value("patient_id").toInt(-1);
@@ -659,7 +660,7 @@ void handlesubmitAppointmentRequest(QTcpSocket *sock, const QJsonObject &obj)
     sendJson(sock, resp);
 }
 
-void handleloadDoctorList(QTcpSocket *sock, const QJsonObject &obj)
+void Widget::handleloadDoctorList(QTcpSocket *sock, const QJsonObject &obj)
     {
         Q_UNUSED(obj);
 
@@ -699,7 +700,7 @@ void handleloadDoctorList(QTcpSocket *sock, const QJsonObject &obj)
         }
 
         QJsonArray doctors;
-        doctors.reserve(q.size() > 0 ? q.size() : 8);
+        // doctors.reserve(q.size() > 0 ? q.size() : 8);
 
         while (q.next()) {
             const int      doctorId  = q.value("doctor_id").toInt();
@@ -734,33 +735,29 @@ void handleloadDoctorList(QTcpSocket *sock, const QJsonObject &obj)
         });
     }
 
-void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
+// ======= 修正后的 handleonPurchaseClicked，已改为成员函数 + 去掉 makeError =======
+void Widget::handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
 {
-    // ========== 0) 参数读取与校验 ==========
     const int patientId = obj.value("patient_id").toInt(-1);
-    const int reqOid    = obj.value("order_id").toInt(0);     // 可选；>0 表示想复用已创建的订单
-    const QJsonArray cart = obj.value("cart").toArray();      // [{medicine_id, qty, unit_price?}, ...]
+    const int reqOid    = obj.value("order_id").toInt(0);
+    const QJsonArray cart = obj.value("cart").toArray();
 
-    if (patientId < 0) { sendJson(sock, makeError("invalid patient_id")); return; }
-    if (cart.isEmpty()) { sendJson(sock, makeError("cart is empty")); return; }
+    if (patientId < 0) { sendError(sock, "onPurchaseClicked", "invalid patient_id"); return; }
+    if (cart.isEmpty()) { sendError(sock, "onPurchaseClicked", "cart is empty"); return; }
 
-    // ========== 1) 打开数据库 ==========
     QSqlDatabase db = QSqlDatabase::database();
     if (!db.isValid() || !db.isOpen()) {
         qWarning() << "[onPurchaseClicked] database not open";
-        sendJson(sock, makeError("database not open"));
+        sendError(sock, "onPurchaseClicked", "database not open");
         return;
     }
 
-    // ========== 2) 准备事务 ==========
     if (!db.transaction()) {
         qWarning() << "[onPurchaseClicked] begin transaction failed:" << db.lastError().text();
-        // 不中断，继续尝试
     }
 
     int oid = 0;
 
-    // ========== 3) 若请求带了 order_id，确保处于 'created' 状态 ==========
     if (reqOid > 0) {
         QSqlQuery chk(db);
         const char *sql_chk = R"SQL(
@@ -772,7 +769,7 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
             const QString err = chk.lastError().text();
             qWarning() << "[onPurchaseClicked] chk prepare failed:" << err;
             db.rollback();
-            sendJson(sock, makeError(QString("sql prepare failed(chk): %1").arg(err)));
+            sendError(sock, "onPurchaseClicked", QString("sql prepare failed(chk): %1").arg(err));
             return;
         }
         chk.bindValue(":oid", reqOid);
@@ -781,16 +778,14 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
             const QString err = chk.lastError().text();
             qWarning() << "[onPurchaseClicked] chk exec failed:" << err;
             db.rollback();
-            sendJson(sock, makeError(QString("sql exec failed(chk): %1").arg(err)));
+            sendError(sock, "onPurchaseClicked", QString("sql exec failed(chk): %1").arg(err));
             return;
         }
         if (chk.next()) {
-            oid = reqOid; // 可直接复用
+            oid = reqOid;
         }
-        // 若没查到，就后续创建新订单（不报错）
     }
 
-    // ========== 4) 如有必要，创建新订单（status='created'）==========
     if (oid == 0) {
         QSqlQuery qi(db);
         const char *sql_new = R"SQL(
@@ -801,7 +796,7 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
             const QString err = qi.lastError().text();
             qWarning() << "[onPurchaseClicked] new order prepare failed:" << err;
             db.rollback();
-            sendJson(sock, makeError(QString("prepare failed(new order): %1").arg(err)));
+            sendError(sock, "onPurchaseClicked", QString("prepare failed(new order): %1").arg(err));
             return;
         }
         qi.bindValue(":p", patientId);
@@ -809,20 +804,18 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
             const QString err = qi.lastError().text();
             qWarning() << "[onPurchaseClicked] new order exec failed:" << err;
             db.rollback();
-            sendJson(sock, makeError(QString("exec failed(new order): %1").arg(err)));
+            sendError(sock, "onPurchaseClicked", QString("exec failed(new order): %1").arg(err));
             return;
         }
         QVariant v = qi.lastInsertId();
         oid = v.isValid() ? v.toInt() : 0;
         if (oid <= 0) {
             db.rollback();
-            sendJson(sock, makeError("cannot get new order_id"));
+            sendError(sock, "onPurchaseClicked", "cannot get new order_id");
             return;
         }
     }
 
-    // ========== 5) 将购物车条目落库到 order_items ==========
-    // 如果客户端未传单价，则以 medicines.price 为准
     QSqlQuery qFindMed(db);
     if (!qFindMed.prepare(R"SQL(
         SELECT name, price FROM medicines WHERE medicine_id = :mid LIMIT 1
@@ -830,7 +823,7 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
         const QString err = qFindMed.lastError().text();
         qWarning() << "[onPurchaseClicked] find med prepare failed:" << err;
         db.rollback();
-        sendJson(sock, makeError(QString("prepare failed(find med): %1").arg(err)));
+        sendError(sock, "onPurchaseClicked", QString("prepare failed(find med): %1").arg(err));
         return;
     }
 
@@ -844,11 +837,11 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
         const QString err = qInsItem.lastError().text();
         qWarning() << "[onPurchaseClicked] insert item prepare failed:" << err;
         db.rollback();
-        sendJson(sock, makeError(QString("prepare failed(insert item): %1").arg(err)));
+        sendError(sock, "onPurchaseClicked", QString("prepare failed(insert item): %1").arg(err));
         return;
     }
 
-    QJsonArray itemsOut; // 回传给前端的条目
+    QJsonArray itemsOut;
     double total = 0.0;
 
     for (const QJsonValue &v : cart) {
@@ -859,33 +852,30 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
 
         if (mid < 0 || qty <= 0) {
             db.rollback();
-            sendJson(sock, makeError("invalid cart item (medicine_id/qty)"));
+            sendError(sock, "onPurchaseClicked", "invalid cart item (medicine_id/qty)");
             return;
         }
 
-        // 查药品名称与默认价格
         qFindMed.bindValue(":mid", mid);
         if (!qFindMed.exec()) {
             const QString err = qFindMed.lastError().text();
             qWarning() << "[onPurchaseClicked] find med exec failed:" << err;
             db.rollback();
-            sendJson(sock, makeError(QString("exec failed(find med): %1").arg(err)));
+            sendError(sock, "onPurchaseClicked", QString("exec failed(find med): %1").arg(err));
             return;
         }
         if (!qFindMed.next()) {
             db.rollback();
-            sendJson(sock, makeError(QString("medicine not found: id=%1").arg(mid)));
+            sendError(sock, "onPurchaseClicked", QString("medicine not found: id=%1").arg(mid));
             return;
         }
         const QString medName = qFindMed.value("name").toString();
         const double  dbPrice = qFindMed.value("price").toDouble();
         if (unitPrice < 0.0) unitPrice = dbPrice;
 
-        // 金额计算
         const double amount = unitPrice * static_cast<double>(qty);
         total += amount;
 
-        // 入库
         const QString itemName = QStringLiteral("药品-%1").arg(medName);
         qInsItem.bindValue(":oid",    oid);
         qInsItem.bindValue(":iname",  itemName);
@@ -897,11 +887,10 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
             const QString err = qInsItem.lastError().text();
             qWarning() << "[onPurchaseClicked] insert item exec failed:" << err;
             db.rollback();
-            sendJson(sock, makeError(QString("exec failed(insert item): %1").arg(err)));
+            sendError(sock, "onPurchaseClicked", QString("exec failed(insert item): %1").arg(err));
             return;
         }
 
-        // 回传条目
         itemsOut.append(QJsonObject{
             {"medicine_id", mid},
             {"name",        medName},
@@ -911,7 +900,6 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
         });
     }
 
-    // ========== 6) 更新订单总额 ==========
     {
         QSqlQuery qUpd(db);
         if (!qUpd.prepare(R"SQL(
@@ -920,7 +908,7 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
             const QString err = qUpd.lastError().text();
             qWarning() << "[onPurchaseClicked] update order prepare failed:" << err;
             db.rollback();
-            sendJson(sock, makeError(QString("prepare failed(update order): %1").arg(err)));
+            sendError(sock, "onPurchaseClicked", QString("prepare failed(update order): %1").arg(err));
             return;
         }
         qUpd.bindValue(":delta", total);
@@ -929,12 +917,11 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
             const QString err = qUpd.lastError().text();
             qWarning() << "[onPurchaseClicked] update order exec failed:" << err;
             db.rollback();
-            sendJson(sock, makeError(QString("exec failed(update order): %1").arg(err)));
+            sendError(sock, "onPurchaseClicked", QString("exec failed(update order): %1").arg(err));
             return;
         }
     }
 
-    // ========== 7) 查询订单摘要（生成 order_code 等）==========
     QString orderCode; double totalAmount=0.0; double discount=0.0;
     {
         QSqlQuery qSum(db);
@@ -949,7 +936,7 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
             const QString err = qSum.lastError().text();
             qWarning() << "[onPurchaseClicked] sum prepare failed:" << err;
             db.rollback();
-            sendJson(sock, makeError(QString("prepare failed(sum): %1").arg(err)));
+            sendError(sock, "onPurchaseClicked", QString("prepare failed(sum): %1").arg(err));
             return;
         }
         qSum.bindValue(":oid", oid);
@@ -957,36 +944,34 @@ void handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
             const QString err = qSum.lastError().text();
             qWarning() << "[onPurchaseClicked] sum exec/next failed:" << err;
             db.rollback();
-            sendJson(sock, makeError(QString("exec failed(sum): %1").arg(err)));
+            sendError(sock, "onPurchaseClicked", QString("exec failed(sum): %1").arg(err));
             return;
         }
         totalAmount = qSum.value("total_amount").toDouble();
-        discount    = qSum.value("discount").toDouble(); // 库里存非负
+        discount    = qSum.value("discount").toDouble();
         orderCode   = qSum.value("order_code").toString();
     }
 
-    // ========== 8) 提交事务 ==========
     if (!db.commit()) {
         const QString err = db.lastError().text();
         qWarning() << "[onPurchaseClicked] commit failed:" << err;
-        sendJson(sock, makeError(QString("commit failed: %1").arg(err)));
+        sendError(sock, "onPurchaseClicked", QString("commit failed: %1").arg(err));
         return;
     }
 
-    // ========== 9) 成功响应 ==========
     sendJson(sock, {
         {"type",          "onPurchaseClicked"},
         {"success",       true},
         {"order_id",      oid},
         {"order_code",    orderCode},
         {"total_amount",  totalAmount},
-        {"discount",      discount},    // 回传原始折扣（非负）；UI 如需负号可取 -discount
+        {"discount",      discount},
         {"count",         static_cast<int>(itemsOut.size())},
-        {"items",         itemsOut}     // 这边列表，包含多个用户选中的购买车药物
+        {"items",         itemsOut}
     });
 }
 
-void handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
+void Widget::handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
 {
     // 0) 读取参数 + 校验
     const int     orderId = obj.value("order_id").toInt(-1);
@@ -995,16 +980,16 @@ void handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
     QString       status  = obj.value("status").toString("success");       // success/pending/failed
     const QString txref   = obj.value("transaction_ref").toString();
 
-    if (orderId <= 0) { sendError(sock, "invalid order_id"); return; }
+    if (orderId <= 0) { sendError(sock, "processPayment", "invalid order_id"); return; }
     if (method.isEmpty()) { method = "Unknown"; }          // 不强制失败
-    if (amount <= 0.0) { sendError(sock, "invalid amount"); return; }
+    if (amount <= 0.0) { sendError(sock, "processPayment", "invalid amount"); return; }
     if (status != "success" && status != "pending" && status != "failed") status = "success";
 
     // 1) 打开数据库
     QSqlDatabase db = QSqlDatabase::database();
     if (!db.isValid() || !db.isOpen()) {
         qWarning() << "[processPayment] database not open";
-        sendError(sock, "database not open");
+        sendError(sock, "processPayment", "database not open");
         return;
     }
 
@@ -1019,9 +1004,9 @@ void handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
         QSqlQuery chk(db);
         static const char* sql_chk =
             "SELECT order_id FROM orders WHERE order_id=:id LIMIT 1";
-        if (!chk.prepare(sql_chk)) { db.rollback(); sendError(sock, "数据库错误(prepare chk)"); return; }
+        if (!chk.prepare(sql_chk)) { db.rollback(); sendError(sock, "processPayment", "数据库错误(prepare chk)"); return; }
         chk.bindValue(":id", orderId);
-        if (!chk.exec() || !chk.next()) { db.rollback(); sendError(sock, "订单不存在"); return; }
+        if (!chk.exec() || !chk.next()) { db.rollback(); sendError(sock, "processPayment", "订单不存在"); return; }
     }
 
     // 4) 插入 payment（触发器可更新订单状态；若无触发器，后面我们会自行汇总）
@@ -1031,14 +1016,14 @@ void handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
         static const char* sql_ins =
             "INSERT INTO payments(order_id, method, amount, status, transaction_ref) "
             "VALUES(:o,:m,:a,:s,:t)";
-        if (!ins.prepare(sql_ins))  { db.rollback(); sendError(sock, "数据库错误(prepare ins)"); return; }
+        if (!ins.prepare(sql_ins))  { db.rollback(); sendError(sock, "processPayment", "数据库错误(prepare ins)"); return; }
         ins.bindValue(":o", orderId);
         ins.bindValue(":m", method);
         ins.bindValue(":a", amount);
         ins.bindValue(":s", status);
         ins.bindValue(":t", txref.isEmpty()? QVariant(QVariant::String) : QVariant(txref));
 
-        if (!ins.exec()) { db.rollback(); sendError(sock, "支付写入失败"); return; }
+        if (!ins.exec()) { db.rollback(); sendError(sock, "processPayment", "支付写入失败"); return; }
 
         // lastInsertId 更通用；如需 SQLite 兼容也可备用查询 last_insert_rowid()
         const QVariant lid = ins.lastInsertId();
@@ -1054,14 +1039,12 @@ void handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
     // 5) 汇总订单金额与已付
     double total = 0.0, paid = 0.0; QString orderStatus;
     {
-        // 已成功支付金额
         QSqlQuery qp(db);
         static const char* sql_paid =
             "SELECT COALESCE(SUM(amount),0) FROM payments WHERE order_id=:o AND status='success'";
         qp.prepare(sql_paid); qp.bindValue(":o", orderId);
         if (qp.exec() && qp.next()) paid = qp.value(0).toDouble();
 
-        // 订单概要
         QSqlQuery qo(db);
         static const char* sql_ord =
             "SELECT status, total_amount FROM orders WHERE order_id=:o LIMIT 1";
@@ -1071,9 +1054,8 @@ void handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
             total       = qo.value("total_amount").toDouble();
         }
     }
-    const double due = std::max(0.0, total - paid);
+    const double due = (total - paid) > 0.0 ? (total - paid) : 0.0;
 
-    // 6) 可选：返回订单明细（购物车药品）
     QJsonArray items;
     {
         QSqlQuery qi(db);
@@ -1096,15 +1078,13 @@ void handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
         }
     }
 
-    // 7) 提交事务
     if (!db.commit()) {
         const QString err = db.lastError().text();
         qWarning() << "[processPayment] commit failed:" << err;
-        sendError(sock, QString("commit failed: %1").arg(err));
+        sendError(sock, "processPayment", QString("commit failed: %1").arg(err));
         return;
     }
 
-    // 8) 构造响应（type 仍用 "processPayment"，便于 Widget 识别）
     sendJson(sock, QJsonObject{
         {"type","processPayment"},
         {"success", status=="success"},
@@ -1125,11 +1105,9 @@ void handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
             {"paid_amount",  paid},
             {"due_amount",   due}
         }},
-        {"items", items} // 可选：这边列表，包含多个用户选中的购买车药物
+        {"items", items}
     });
 }
-
-
 
 // bu yao dong xia mian de, yijing ok
 void Widget::handleGetPatientProfile(QTcpSocket *sock, const QJsonObject &obj)

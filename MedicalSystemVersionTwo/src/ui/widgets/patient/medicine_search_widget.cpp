@@ -13,7 +13,13 @@
 #include <QDialogButtonBox>
 #include <QSpacerItem>
 #include <QMessageBox>
-
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QVariant>   // 如果后面有 toVariant() 之类操作就留着
+#include <QDebug>
 // 药品详情对话框实现
 MedicineDetailDialog::MedicineDetailDialog(const Medicine &medicine, QWidget *parent)
         : QDialog(parent)
@@ -563,7 +569,15 @@ void MedicineSearchWidget::onSearchClicked()
 {
     updateMedicineList();
 }
+void MedicineSearchWidget::refreshUi()
+{
+    // 构造函数里你在 initUI() 之前调用过 loadMedicineData()，
+    // 防御一下，避免控件还没创建时访问空指针。
+    if (!medicineListLayout) return;
 
+    // 统一用已有的渲染逻辑
+    updateMedicineList();
+}
 void MedicineSearchWidget::onCategoryChanged()
 {
     int buttonId = categoryGroup->checkedId();
@@ -587,8 +601,24 @@ void MedicineSearchWidget::onDetailClicked(const Medicine &medicine)
 //
 void MedicineSearchWidget::doOnPurchaseClicked(int patientId, const QJsonArray &cart, int orderId)
 {
-    emit onPurchaseClicked(patientId, cart, orderId);
+    Q_UNUSED(patientId);
+    emit purchaseCartRequested(cart, orderId);
 }
+void MedicineSearchWidget::onPurchaseClicked(const Medicine &medicine)
+{
+    // 手动构造 QJsonObject，不用聚合初始化
+    QJsonObject item;
+    item["item_id"]   = 0;                 // 如有真实ID就填真实ID
+    item["item_name"] = medicine.name;
+    item["amount"]    = medicine.price;
+    item["qty"]       = 1;
+
+    QJsonArray cart;
+    cart.append(item);
+
+    emit purchaseCartRequested(cart, 0);   // 这里先用 0，当你有真实 orderId 再替换
+}
+
 void MedicineSearchWidget::onPurchaseClickedOk(const QJsonObject &resp)
 {
     const bool ok = resp.value("success").toBool();

@@ -13,7 +13,11 @@
 #include <QFrame>
 #include <QDate>
 #include <QMessageBox> // 用于测试保存功能
-
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QVariant>   // 如果后面有 toVariant() 之类操作就留着
+#include <QDebug>
 ProfileWidget::ProfileWidget(Widget *api, int patientId, QWidget *parent)
     : QWidget(parent), m_api(api), m_patientId(patientId)
 {

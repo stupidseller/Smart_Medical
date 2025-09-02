@@ -189,47 +189,14 @@ QWidget* DoctorInfoWidget::createDoctorCard(const QString &name, const QString &
 }
 
 void DoctorInfoWidget::loadDoctorList() {
-    if (!doctorListLayout) return;
-
-    // 清空现有列表
-    QLayoutItem* item;
-    while ((item = doctorListLayout->takeAt(0)) != nullptr) {
-        delete item->widget();
-        delete item;
-    }
-
-    // 模拟医生数据
+    // 发请求，真正填充在 onLoadDoctorListOk 里
     emit requestLoadDoctorList();
-
-    // 根据搜索条件过滤
-    QString selectedDept = departmentCombo->currentText();
-    QString searchName = searchEdit->text().trimmed();
-
-    for(const auto &doctor : doctors) {
-        // 科室过滤
-        if (selectedDept != "全部科室" && !doctor.department.contains(selectedDept)) {
-            continue;
-        }
-
-        // 姓名过滤
-        if (!searchName.isEmpty() && !doctor.name.contains(searchName, Qt::CaseInsensitive)) {
-            continue;
-        }
-
-        doctorListLayout->addWidget(createDoctorCard(
-                doctor.name, doctor.title, doctor.department,
-                doctor.specialty, doctor.schedule, doctor.experience
-        ));
-    }
-
-    doctorListLayout->addStretch();
 }
 
 void DoctorInfoWidget::onLoadDoctorListOk(const QJsonArray &doctors)
 {
     model_.clear();
     model_.reserve(doctors.size());
-
     for (const QJsonValue &v : doctors) {
         const QJsonObject o = v.toObject();
         DoctorProfile p;
@@ -239,23 +206,36 @@ void DoctorInfoWidget::onLoadDoctorListOk(const QJsonArray &doctors)
         p.department = o.value("department").toString();
         p.specialty  = o.value("specialty").toString();
         p.experience = o.value("experience").toString();
-
-        // 服务器暂未提供，保持为空；未来提供后改为读取：
-        // p.schedule  = o.value("schedule").toString();
-        // p.education = o.value("education").toString();
-        // p.awards    = o.value("awards").toString();
-
         model_.push_back(std::move(p));
     }
-
     refreshUi();
 }
 
 void DoctorInfoWidget::refreshUi()
 {
-    // TODO: 把 model_ 渲染到 UI
-    qDebug() << "[DoctorInfoWidget] loaded doctors:" << model_.size();
+    if (!doctorListLayout) return;
+
+    // 清空原有
+    QLayoutItem* it;
+    while ((it = doctorListLayout->takeAt(0)) != nullptr) {
+        if (it->widget()) it->widget()->deleteLater();
+        delete it;
+    }
+
+    const QString selectedDept = departmentCombo->currentText();
+    const QString searchName   = searchEdit->text().trimmed();
+
+    for (const auto &d : model_) {
+        if (selectedDept != "全部科室" && !d.department.contains(selectedDept)) continue;
+        if (!searchName.isEmpty() && !d.name.contains(searchName, Qt::CaseInsensitive)) continue;
+
+        doctorListLayout->addWidget(createDoctorCard(
+            d.name, d.title, d.department, d.specialty, d.schedule, d.experience
+        ));
+    }
+    doctorListLayout->addStretch();
 }
+
 
 void DoctorInfoWidget::onSearchClicked() {
     loadDoctorList();

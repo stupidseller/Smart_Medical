@@ -11,22 +11,11 @@
 #include <QGridLayout>
 #include <QVariant>
 #include <QFormLayout>
-
-// 预约时段结构体
-struct AppointmentSlot {
-    QString date;       // 例如: "08-31 上午"
-    QString statusText; // 例如: "余号: 5" 或 "已约满"
-    int remaining;      // 例如: 5 或 0
-};
-
-struct DoctorInfo {
-    QString name;
-    QString title;
-    QString department;
-    QString specialty;
-    QList<AppointmentSlot> timeSlots;  // 重命名为 timetimeSlots
-};
-
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QVariant>      // 若有 toVariant()
+#include <QDebug>
 
 AppointmentBookingWidget::AppointmentBookingWidget(QWidget *parent)
         : QWidget(parent), doctorListLayout(nullptr)
@@ -200,31 +189,40 @@ QWidget* AppointmentBookingWidget::createDoctorEntryWidget(const DoctorInfo &doc
     int row = 0, col = 0;
     for (const auto &slot : doctor.timeSlots) {
         timeSlotsLayout->addWidget(createSlotWidget(slot), row, col);
-        col++;
-        if (col >= 3) { // 每行最多3个
-            col = 0;
-            row++;
-        }
+        if (++col >= 3) { col = 0; ++row; }
     }
 
-    // 信息第四行: 操作按钮
+    // 信息第四行: 操作按钮（✅ 这里先声明，再使用）
     QHBoxLayout *buttonsLayout = new QHBoxLayout();
+
     QPushButton *bookButton = new QPushButton("立即预约");
     bookButton->setObjectName("bookNowButton");
-    connect(bookButton, &QPushButton::clicked, this, [this, doctor](){
-        onBookNowClicked(doctor.name, doctor.timeSlots[0].date); // 传递示例信息
-    });
+    // 没有可预约时段就禁用按钮
+    bookButton->setEnabled(!doctor.timeSlots.isEmpty());
+
+    // 点击“立即预约”，用 label 作为时间段文本
+    connect(bookButton, &QPushButton::clicked, this,
+            [this, doc = doctor](){
+                const QString slotText = doc.timeSlots.isEmpty()
+                                         ? QString()
+                                         : doc.timeSlots.first().label;
+                onBookNowClicked(doc.name, slotText);
+            });
+
     QPushButton *detailsButton = new QPushButton("医生详情");
     detailsButton->setObjectName("detailsButton");
+
     buttonsLayout->addStretch();
     buttonsLayout->addWidget(bookButton);
     buttonsLayout->addWidget(detailsButton);
 
+    // 组装右侧布局
     detailsLayout->addLayout(line1Layout);
     detailsLayout->addWidget(specialtyLabel);
     detailsLayout->addLayout(timeSlotsLayout);
     detailsLayout->addLayout(buttonsLayout);
 
+    // 合并左右
     mainLayout->addWidget(avatar);
     mainLayout->addLayout(detailsLayout);
 
@@ -232,28 +230,23 @@ QWidget* AppointmentBookingWidget::createDoctorEntryWidget(const DoctorInfo &doc
 }
 
 QWidget* AppointmentBookingWidget::createSlotWidget(const AppointmentSlot &slot) {
-    QFrame *widget = new QFrame();
-    widget->setObjectName("slotWidget");
-    QVBoxLayout *layout = new QVBoxLayout(widget);
-    layout->setContentsMargins(15, 10, 15, 10);
+    QFrame *w = new QFrame();
+    w->setObjectName("slotWidget");
+    auto *layout = new QVBoxLayout(w);
+    layout->setContentsMargins(15,10,15,10);
 
-    QLabel *dateLabel = new QLabel(slot.date);
+    QLabel *dateLabel = new QLabel(slot.label);
     dateLabel->setObjectName("slotDate");
 
-    // 关键修正：使用正确的成员变量名 `statusText`
-    QLabel *remainingLabel = new QLabel(slot.statusText);
+    QLabel *remainingLabel = new QLabel(slot.tip);
     remainingLabel->setObjectName("slotRemaining");
-
-    // 如果已约满，设置特殊属性用于QSS识别
-    if (slot.remaining == 0) {
-        remainingLabel->setProperty("full", true);
-    }
+    if (slot.remain == 0) remainingLabel->setProperty("full", true);
 
     layout->addWidget(dateLabel);
     layout->addWidget(remainingLabel);
-
-    return widget;
+    return w;
 }
+
 
 
 // --- 槽函数实现 ---
