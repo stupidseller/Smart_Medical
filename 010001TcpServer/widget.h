@@ -47,6 +47,8 @@ private:
     void handleGetPatientProfile(QTcpSocket *sock, const QJsonObject &obj);
     void handleUpdatePatientProfile(QTcpSocket *sock, const QJsonObject &obj);
     // bu yao dong shang mian de yijing ok
+    void handlecurrentDataDoctor(QTcpSocket *sock, const QJsonObject &obj);
+    void handleUpdateDoctorProfile(QTcpSocket *sock, const QJsonObject &obj);
 
     void handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj);
     void handleLoadOrderDetails(QTcpSocket *sock, const QJsonObject &obj);

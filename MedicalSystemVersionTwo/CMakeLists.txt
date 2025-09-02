@@ -20,44 +20,68 @@ find_package(Qt5 COMPONENTS Widgets Network REQUIRED Core Svg)
 
 # 添加可执行文件，并包含所有源文件
 add_executable(${PROJECT_NAME}
-        main.cpp
-        src/ui/widgets/widget.h
-        src/ui/widgets/widget.cpp
-        src/ui/widgets/common/login_dialog.h
-                src/ui/widgets/common/login_dialog.cpp
-                src/ui/widgets/patient/patient_main_window.cpp
-                src/ui/widgets/patient/patient_main_window.h
-                src/ui/widgets/patient/profile_widget.cpp
-                src/ui/widgets/patient/profile_widget.h
-                src/ui/widgets/doctor/doctor_main_window.cpp
-                src/ui/widgets/patient/appointment_dialog.h
-                src/ui/widgets/patient/appointment_dialog.cpp
-                src/ui/widgets/patient/appointment_booking_widget.h
-                src/ui/widgets/patient/appointment_booking_widget.cpp
-                src/ui/widgets/patient/doctor_info_widget.h
-                src/ui/widgets/patient/doctor_info_widget.cpp
-                src/ui/widgets/patient/communication_widget.h
-                src/ui/widgets/patient/communication_widget.cpp
-                src/ui/widgets/patient/health_assessment_widget.h
-                src/ui/widgets/patient/health_assessment_widget.cpp
-                src/ui/widgets/patient/medicine_search_widget.h
-                src/ui/widgets/patient/medicine_search_widget.cpp
-                src/ui/widgets/patient/payment_success_dialog.h
-                src/ui/widgets/patient/payment_success_dialog.cpp
-                src/ui/widgets/patient/online_payment_widget.h
-                src/ui/widgets/patient/online_payment_widget.cpp
+    # --- sources (.cpp) ---
+    main.cpp
+    src/ui/widgets/widget.cpp
+    src/ui/widgets/common/login_dialog.cpp
+    src/ui/widgets/patient/patient_main_window.cpp
+    src/ui/widgets/patient/profile_widget.cpp
+    src/ui/widgets/doctor/doctor_main_window.cpp
+    src/ui/widgets/patient/appointment_dialog.cpp
+    src/ui/widgets/patient/appointment_booking_widget.cpp
+    src/ui/widgets/patient/doctor_info_widget.cpp
+    src/ui/widgets/patient/communication_widget.cpp
+    src/ui/widgets/patient/health_assessment_widget.cpp
+    src/ui/widgets/patient/medicine_search_widget.cpp
+    src/ui/widgets/patient/payment_success_dialog.cpp
+    src/ui/widgets/patient/online_payment_widget.cpp
 
-                src/ui/widgets/doctor/doctor_main_window.h
-                src/ui/widgets/doctor/doctor_profile_widget.h
-                src/ui/widgets/doctor/doctor_profile_widget.cpp
-                src/ui/widgets/doctor/leave_record_item_widget.h
-                src/ui/widgets/doctor/leave_record_item_widget.cpp
-                src/ui/widgets/doctor/attendance_widget.h
-                src/ui/widgets/doctor/attendance_widget.cpp
-                src/ui/widgets/doctor/patient_management_widget.h
-                src/ui/widgets/doctor/patient_management_widget.cpp
-                src/ui/widgets/doctor/patient_list_item_widget.cpp
+    src/ui/widgets/doctor/doctor_profile_widget.cpp
+    src/ui/widgets/doctor/leave_record_item_widget.cpp
+    src/ui/widgets/doctor/attendance_widget.cpp
+    src/ui/widgets/doctor/patient_management_widget.cpp
+    src/ui/widgets/doctor/patient_list_item_widget.cpp
+    src/ui/widgets/doctor/prescription_widget.cpp
+    src/ui/widgets/doctor/medical_record_dialog.cpp
+    src/ui/widgets/doctor/medical_orders_dialog.cpp
+
+    src/ui/widgets/patient/medical_orders_widget.cpp
+    src/ui/widgets/patient/hospitalization_info_widget.cpp
+    src/ui/widgets/patient/medical_record_widget.cpp
+    src/ui/widgets/patient/long_term_orders_widget.cpp
+    src/ui/widgets/patient/eprescription_widget.cpp
+
+    # --- headers (.h) ---
+    src/ui/widgets/widget.h
+    src/ui/widgets/common/login_dialog.h
+    src/ui/widgets/patient/patient_main_window.h
+    src/ui/widgets/patient/profile_widget.h
+    src/ui/widgets/doctor/doctor_main_window.h
+    src/ui/widgets/patient/appointment_dialog.h
+    src/ui/widgets/patient/appointment_booking_widget.h
+    src/ui/widgets/patient/doctor_info_widget.h
+    src/ui/widgets/patient/communication_widget.h
+    src/ui/widgets/patient/health_assessment_widget.h
+    src/ui/widgets/patient/medicine_search_widget.h
+    src/ui/widgets/patient/payment_success_dialog.h
+    src/ui/widgets/patient/online_payment_widget.h
+
+    src/ui/widgets/doctor/doctor_profile_widget.h
+    src/ui/widgets/doctor/leave_record_item_widget.h
+    src/ui/widgets/doctor/attendance_widget.h
+    src/ui/widgets/doctor/patient_management_widget.h
+    src/ui/widgets/doctor/patient_list_item_widget.h
+    src/ui/widgets/doctor/prescription_widget.h
+    src/ui/widgets/doctor/medical_record_dialog.h
+    src/ui/widgets/doctor/medical_orders_dialog.h
+
+    src/ui/widgets/patient/medical_orders_widget.h
+    src/ui/widgets/patient/hospitalization_info_widget.h
+    src/ui/widgets/patient/medical_record_widget.h
+    src/ui/widgets/patient/long_term_orders_widget.h
+    src/ui/widgets/patient/eprescription_widget.h
 )
+
 
 # 将我们的程序链接到 Qt 的 Widgets 模块
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt5::Widgets Qt5::Network Qt5::Core Qt5::Svg)

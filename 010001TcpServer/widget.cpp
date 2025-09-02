@@ -256,13 +256,165 @@ void Widget::handleMessage(QTcpSocket *sock, const QJsonObject &obj)
         handleonPurchaseClicked(sock, obj);
     } else if (type == "processPayment") {
         handleprocessPayment(sock, obj);
+    } else if (type == "currentDataDoctor") {
+        handlecurrentDataDoctor(sock, obj);
+    } else if (type == "update_doctor_profile") {
+        handleUpdateDoctorProfile(sock, obj);
     } else {
         qDebug() << "unknown type:" << type << obj;
         sendError(sock, "error", QString("unknown type: %1").arg(type));
     }
 }
 // shang mian keyi jia, if / else if
+// widget.cpp  (服务器)
+void Widget::handlecurrentDataDoctor(QTcpSocket *sock, const QJsonObject &obj)
+{
+    QSqlDatabase db = QSqlDatabase::database();
+    if (!db.isValid() || !db.isOpen()) {
+        sendError(sock, "currentDataDoctor", "database not open");
+        return;
+    }
 
+    const int accountId = obj.value("account_id").toInt(-1);
+    const int doctorId  = obj.value("doctor_id").toInt(-1);
+
+    QSqlQuery q(db);
+    if (accountId > 0) {
+        // 通过账户查医生
+        static const char *SQL_BY_ACCOUNT = R"SQL(
+            SELECT a.account_id, a.username, a.role, a.is_active,
+                   d.doctor_id, d.name, d.title, d.department_id,
+                   dep.name AS department_name,
+                   COALESCE(d.specialty,'')      AS specialty,
+                   COALESCE(d.experience,'')     AS experience,
+                   d.consultation_fee,
+                   d.is_online
+            FROM accounts a
+            JOIN doctors d       ON d.doctor_id       = a.doctor_id
+            LEFT JOIN departments dep ON dep.department_id = d.department_id
+            WHERE a.account_id = :aid AND a.role = 'doctor'
+            LIMIT 1
+        )SQL";
+        if (!q.prepare(SQL_BY_ACCOUNT)) { sendError(sock,"currentDataDoctor","prepare failed"); return; }
+        q.bindValue(":aid", accountId);
+    } else if (doctorId > 0) {
+        // 直接按医生ID查
+        static const char *SQL_BY_DOCTOR = R"SQL(
+            SELECT NULL AS account_id, NULL AS username, 'doctor' AS role, 1 AS is_active,
+                   d.doctor_id, d.name, d.title, d.department_id,
+                   dep.name AS department_name,
+                   COALESCE(d.specialty,'')      AS specialty,
+                   COALESCE(d.experience,'')     AS experience,
+                   d.consultation_fee,
+                   d.is_online
+            FROM doctors d
+            LEFT JOIN departments dep ON dep.department_id = d.department_id
+            WHERE d.doctor_id = :did
+            LIMIT 1
+        )SQL";
+        if (!q.prepare(SQL_BY_DOCTOR)) { sendError(sock,"currentDataDoctor","prepare failed"); return; }
+        q.bindValue(":did", doctorId);
+    } else {
+        sendError(sock, "currentDataDoctor", "missing account_id or doctor_id");
+        return;
+    }
+
+    if (!q.exec()) { sendError(sock,"currentDataDoctor", q.lastError().text()); return; }
+    if (!q.next()) { sendError(sock,"currentDataDoctor","not found"); return; }
+
+    QJsonObject doctor{
+        {"account_id",       q.value("account_id").isNull() ? QJsonValue() : QJsonValue(q.value("account_id").toInt())},
+        {"username",         q.value("username").toString()},
+        {"role",             q.value("role").toString()},
+        {"is_active",        q.value("is_active").toInt()!=0},
+
+        {"doctor_id",        q.value("doctor_id").toInt()},
+        {"name",             q.value("name").toString()},
+        {"title",            q.value("title").toString()},
+        {"department_id",    q.value("department_id").toInt()},
+        {"department",       q.value("department_name").toString()},
+        {"specialty",        q.value("specialty").toString()},
+        {"experience",       q.value("experience").toString()},
+        {"consultation_fee", q.value("consultation_fee").toDouble()},
+        {"is_online",        q.value("is_online").toInt()!=0}
+    };
+
+    sendJson(sock, QJsonObject{
+        {"type",    "currentDataDoctor"},
+        {"success", true},
+        {"doctor",  doctor}
+    });
+}
+void Widget::handleUpdateDoctorProfile(QTcpSocket *sock, const QJsonObject &obj)
+    {
+        const int did = obj.value("doctor_id").toInt(-1);
+        if (did <= 0) { sendError(sock,"update_doctor_profile","missing doctor_id"); return; }
+
+        // 允许更新的字段
+        // 注意：title 受 CHECK 约束；is_online 只能 0/1；fee >= 0
+        const QMap<QString, QString> allow {
+            {"title",            "title"},            // 主任医师/副主任医师/主治医师/住院医师/医师
+            {"department_id",    "department_id"},
+            {"specialty",        "specialty"},
+            {"experience",       "experience"},
+            {"consultation_fee", "consultation_fee"},
+            {"is_online",        "is_online"}
+        };
+
+        QStringList sets;
+        QMap<QString,QVariant> binds;
+
+        auto titleOk = [](const QString &t){
+            static const QStringList k = {"主任医师","副主任医师","主治医师","住院医师","医师"};
+            return k.contains(t);
+        };
+
+        for (auto it = allow.constBegin(); it != allow.constEnd(); ++it) {
+            const QString k = it.key();
+            if (!obj.contains(k)) continue;
+
+            if (k=="title") {
+                const QString t = obj.value(k).toString().trimmed();
+                if (!titleOk(t)) continue;
+                binds[":"+k] = t;
+            } else if (k=="is_online") {
+                const int v = obj.value(k).toInt(0);
+                binds[":"+k] = (v?1:0);
+            } else if (k=="consultation_fee") {
+                double fee = obj.value(k).toDouble(-1.0);
+                if (fee < 0.0) fee = 0.0;
+                binds[":"+k] = fee;
+            } else if (k=="department_id") {
+                const int dep = obj.value(k).toInt(-1);
+                if (dep <= 0) continue;
+                binds[":"+k] = dep;
+            } else {
+                binds[":"+k] = obj.value(k).toVariant();
+            }
+            sets << QString("%1=:%2").arg(it.value(), k);
+        }
+
+        if (sets.isEmpty()) { sendError(sock,"update_doctor_profile","no valid fields"); return; }
+
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isOpen()) { sendError(sock,"update_doctor_profile","database not open"); return; }
+        if (!db.transaction()) qWarning() << "[update_doctor_profile] begin tx failed";
+
+        QSqlQuery q(db);
+        const QString sql = "UPDATE doctors SET " + sets.join(", ") + " WHERE doctor_id=:id";
+        if (!q.prepare(sql)) { db.rollback(); sendError(sock,"update_doctor_profile","prepare failed"); return; }
+        for (auto it = binds.constBegin(); it != binds.constEnd(); ++it) q.bindValue(it.key(), it.value());
+        q.bindValue(":id", did);
+
+        if (!q.exec()) { db.rollback(); sendError(sock,"update_doctor_profile", q.lastError().text()); return; }
+        if (!db.commit()) { db.rollback(); sendError(sock,"update_doctor_profile","commit failed"); return; }
+
+        sendJson(sock, QJsonObject{
+            {"type","update_doctor_profile"},
+            {"success", true},
+            {"message","已保存"}
+        });
+    }
 void Widget::handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj)
 {
 

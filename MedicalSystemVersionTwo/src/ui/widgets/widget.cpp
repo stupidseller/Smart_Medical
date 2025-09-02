@@ -221,6 +221,19 @@ void Widget::processPayment(int orderId, const QString &method, double amount,
     emit processPaymentOk(resp);
     m_cartOrder = QJsonObject(); // 付款后清空
 }
+// widget.cpp (客户端)
+void Widget::loadCurrentDoctorDataByAccount(int accountId) {
+    sendJson({{"type","currentDataDoctor"},{"account_id", accountId}});
+}
+void Widget::loadCurrentDoctorDataByDoctorId(int doctorId) {
+    sendJson({{"type","currentDataDoctor"},{"doctor_id", doctorId}});
+}
+void Widget::sendUpdateDoctorProfile(const QJsonObject &patch) {
+    QJsonObject obj = patch;
+    obj.insert("type","update_doctor_profile");
+    sendJson(obj);
+}
+
 // xia mian zhi yunxu xiugai slotReadyRead
 // xiamian zhege if elseif
 void Widget::slotReadyRead()
@@ -259,6 +272,15 @@ void Widget::slotReadyRead()
             continue;
         } else if (type == "onPurchaseClicked") {
             emit onPurchaseClickedOk(obj);
+            continue;
+        } else if (type == "currentDataDoctor") {
+            const bool ok = obj.value("success").toBool();
+            if (ok) emit currentDataDoctorOk(obj.value("doctor").toObject());
+            else    emit currentDataDoctorFailed(obj.value("error").toString());
+            continue;
+        } else if (type == "update_doctor_profile") {
+            const bool ok = obj.value("success").toBool();
+            emit updateDoctorProfileDone(ok, ok ? "保存成功" : obj.value("message").toString());
             continue;
         } else if (type == "loadDoctorList") {
             const bool ok = obj.value("success").toBool();

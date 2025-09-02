@@ -27,7 +27,9 @@ public:
     void sendGetPatientProfile(int patientId);
     void sendUpdatePatientProfile(const QJsonObject &profilePatch); // 包含 patient_id
     // shang mian bu yao dong , yijing ok
-
+    void loadCurrentDoctorDataByAccount(int accountId);
+        void loadCurrentDoctorDataByDoctorId(int doctorId);
+        void sendUpdateDoctorProfile(const QJsonObject &patch);
     void loadMedicineData();
 signals:
     void loginSucceeded(const QString &msg);
@@ -38,6 +40,10 @@ signals:
     void patientProfileLoaded(const QJsonObject &profile);
     void patientProfileSaved(bool ok, const QString &msg);
  // shang mian ok
+    void currentDataDoctorOk(const QJsonObject &doctor);
+        void currentDataDoctorFailed(const QString &msg);
+        void updateDoctorProfileDone(bool ok, const QString &msg);
+    // xia mian ok
     void loadMedicineDataOk(const QJsonArray &medicines);
     void loadOrderDetailsOk(const QJsonArray &orders);
     void loadAvailableDoctorsOk(const QJsonArray &doctors);
