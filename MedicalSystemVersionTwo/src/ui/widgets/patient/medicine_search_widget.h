@@ -15,6 +15,7 @@
 #include <QTableWidget>
 
 struct Medicine {
+    int     id = 0;            // ✅ 新增
     QString name;
     QString description;
     QString type;
@@ -26,6 +27,8 @@ struct Medicine {
     QString dosage;
     QString iconColor;
 };
+
+
 
 class MedicineDetailDialog : public QDialog
 {

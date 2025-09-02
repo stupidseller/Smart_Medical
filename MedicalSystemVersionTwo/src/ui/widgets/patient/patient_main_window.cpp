@@ -361,6 +361,7 @@ void PatientMainWindow::showMedicineSearchWidget() {
         connect(api,                &Widget::addToCartOk,
                 medicineSearchPage, &MedicineSearchWidget::onPurchaseClickedOk);
 
+
         mainStackedWidget->addWidget(medicineSearchPage);
 
         QTimer::singleShot(0, medicineSearchPage, &MedicineSearchWidget::loadMedicineData);
@@ -375,26 +376,32 @@ void PatientMainWindow::showOnlinePaymentWidget() {
         connect(paymentPage, &OnlinePaymentWidget::backRequested,
                 this, [=]{ mainStackedWidget->setCurrentWidget(dashboardPage); });
 
-        // 页面 -> Widget：加载订单明细
+        // 页面 -> API：拉订单
         connect(paymentPage, &OnlinePaymentWidget::requestLoadOrderDetails,
-                this, [this]{
-                    api->loadOrderDetails();            // 用默认值 -1
-                });
+                this, [this]{ api->loadOrderDetails(); });
 
-        // Widget -> 页面：订单明细结果
-        connect(api,          &Widget::loadOrderDetailsOk,
-                paymentPage,  &OnlinePaymentWidget::onLoadOrderDetailsOk);
+        // API -> 页面：订单列表结果
+        connect(api,         &Widget::loadOrderDetailsOk,
+                paymentPage, &OnlinePaymentWidget::onLoadOrderDetailsOk);
 
-        // 页面 -> Widget：发起支付
+        // 页面 -> API：发起支付
         using ProcSig5 = void (OnlinePaymentWidget::*)(int, const QString&, double, const QString&, const QString&);
         connect(paymentPage,
                 static_cast<ProcSig5>(&OnlinePaymentWidget::processPayment),
                 api,
                 &Widget::processPayment);
 
-        // Widget -> 页面：支付结果
-        connect(api,          &Widget::processPaymentOk,
-                paymentPage,  &OnlinePaymentWidget::onProcessPaymentOk);
+        // API -> 页面：支付结果
+        connect(api,         &Widget::processPaymentOk,
+                paymentPage, &OnlinePaymentWidget::onProcessPaymentOk);
+
+        // ✅ 关键1：当有商品加入购物车时，实时把订单推给支付页刷新（如果支付页已经创建）
+        connect(api,         &Widget::addToCartOk,
+                paymentPage, &OnlinePaymentWidget::onOrderDetailLoaded,
+                Qt::UniqueConnection);
+
+        // ✅ 关键2：第一次进入支付页时，主动加载一次当前购物单
+        QTimer::singleShot(0, paymentPage, &OnlinePaymentWidget::loadOrderDetails);
 
         mainStackedWidget->addWidget(paymentPage);
     }

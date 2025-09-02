@@ -49,12 +49,13 @@ signals:
 public slots:
     void onLoadOrderDetailsOk(const QJsonArray &orders); //
     void onProcessPaymentOk(const QJsonObject &resp);
+    void onOrderDetailLoaded(const QJsonObject &order);
 private slots:
     void onConfirmPaymentClicked();
     void onPaymentProcessFinished();
     void updatePaymentStatusText();
     void onEnsureOrderReady(int orderId);
-    void onOrderDetailLoaded(const QJsonObject &order);
+
     void onPaymentProcessed(bool ok, const QString &msg, const QJsonObject &payload);
 
 protected:

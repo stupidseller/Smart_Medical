@@ -548,6 +548,7 @@ void MedicineSearchWidget::onLoadMedicineDataOk(const QJsonArray &medicines)
     for (const QJsonValue &v : medicines) {
         const QJsonObject o = v.toObject();
         Medicine row;
+        row.id            = o.value("medicine_id").toInt();
         row.name           = o.value("name").toString();
         row.description    = o.value("description").toString();
         row.type           = o.value("type").toString();
@@ -594,16 +595,22 @@ void MedicineSearchWidget::onDetailClicked(const Medicine &medicine)
 {
     MedicineDetailDialog dialog(medicine, this);
 
-    // 原来这里弹“购买成功”，改为加入购物车
-    connect(&dialog, &MedicineDetailDialog::purchaseRequested,
-            this, [this, medicine](const QString &) {
-                onPurchaseClicked(medicine);  // 走统一加入购物车逻辑
-                QMessageBox::information(this, tr("已加入购买单"),
-                                         tr("已将 %1 加入购买单，可到“线上支付”查看并付款。").arg(medicine.name));
-            });
+    // 原来是提示“购买成功”，现在改为加入购物车
+    connect(&dialog, &MedicineDetailDialog::purchaseRequested, this, [this, medicine](){
+        QJsonObject item{
+            {"medicine_id", medicine.id},
+            {"qty",         1},
+            {"unit_price",  medicine.price}
+        };
+        QJsonArray cart; cart.append(item);
+        emit purchaseCartRequested(cart, 0);
+        QMessageBox::information(this, "已加入购物车",
+                                 QString("%1 已加入购物车").arg(medicine.name));
+    });
 
     dialog.exec();
 }
+
 
 //
 void MedicineSearchWidget::doOnPurchaseClicked(int patientId, const QJsonArray &cart, int orderId)
@@ -614,16 +621,14 @@ void MedicineSearchWidget::doOnPurchaseClicked(int patientId, const QJsonArray &
 void MedicineSearchWidget::onPurchaseClicked(const Medicine &medicine)
 {
     QJsonObject item;
-    item["item_id"]   = 0;
-    item["item_name"] = medicine.name;
-    item["amount"]    = medicine.price;
-    item["qty"]       = 1;
+    item["medicine_id"] = medicine.id;      // ✅
+    item["qty"]         = 1;                // ✅
+    item["unit_price"]  = medicine.price;   // ✅
 
-    QJsonArray cart;
-    cart.append(item);
-
-    emit purchaseCartRequested(cart, 0);   // 0 表示新建/当前购物单
+    QJsonArray cart; cart.append(item);
+    emit purchaseCartRequested(cart, 0);    // 这里 0 表示新建/沿用未支付订单
 }
+
 
 
 void MedicineSearchWidget::onPurchaseClickedOk(const QJsonObject &resp)

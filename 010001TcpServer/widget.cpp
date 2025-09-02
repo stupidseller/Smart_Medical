@@ -280,6 +280,7 @@ void Widget::handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj)
     // 只查 UI 需要的列（与前端字段对齐）
     static const char *kSql = R"SQL(
         SELECT
+            medicine_id,
             name,
             description,
             type,
@@ -322,6 +323,7 @@ void Widget::handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj)
 
     while (q.next()) {
         // 注意：不要用变量名"type"遮蔽 JSON 的 key，这里用 drugType
+        const int     mid          = q.value("medicine_id").toInt();
         const QString name         = q.value("name").toString();
         const QString description  = q.value("description").toString();
         const QString drugType     = q.value("type").toString();
@@ -334,16 +336,17 @@ void Widget::handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj)
         const QString iconColor    = q.value("icon_color").toString();
 
         QJsonObject item{
-            {"name",            name},
-            {"description",     description},
-            {"type",            drugType},
-            {"is_prescription", isPrescription},
-            {"price",           price},
-            {"specifications",  specs},
-            {"manufacturer",    manufacturer},
-            {"effects",         effects},
-            {"dosage",          dosage},
-            {"icon_color",      iconColor}
+            {"medicine_id",    mid},                // ✅ 新增这个
+            {"name",           name},
+            {"description",    description},
+            {"type",           drugType},
+            {"is_prescription",isPrescription},
+            {"price",          price},
+            {"specifications", specs},
+            {"manufacturer",   manufacturer},
+            {"effects",        effects},
+            {"dosage",         dosage},
+            {"icon_color",     iconColor}
         };
         arr.append(item);
 
