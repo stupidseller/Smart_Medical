@@ -1,53 +1,60 @@
 #ifndef DOCTOR_MAIN_WINDOW_H
 #define DOCTOR_MAIN_WINDOW_H
 
-#include <QWidget>
+#include <QMainWindow>
+#include <QString>
 
-// 前置声明，减少头文件依赖
+class Widget;                 // 前置声明
 class QLabel;
 class QTimer;
-class QStackedWidget; // <--- 新增
+class QStackedWidget;
+class QPushButton;            // ★ 新增
 class DoctorProfileWidget;
 class AttendanceWidget;
 class PatientManagementWidget;
-class DoctorMainWindow : public QWidget
 
-{
-Q_OBJECT
-
+class DoctorMainWindow : public QMainWindow {   // ★ 基类改为 QMainWindow
+    Q_OBJECT
 public:
-    explicit DoctorMainWindow(QWidget *parent = nullptr);
+    explicit DoctorMainWindow(Widget* api, int doctorId, const QString& name, QWidget *parent = nullptr);
     ~DoctorMainWindow();
 
+signals:
+    void logoutRequested();
+
 private slots:
-    // 用于更新时钟的槽函数
     void updateClock();
-    void showProfilePage(); // <--- 新增
+    void showProfilePage();
     void showDashboardPage();
     void showAttendancePage();
     void showPatientManagementPage();
+
 private:
-    // 初始化UI界面
     void initUI();
-    // 应用QSS样式表
     void applyStyles();
 
-    // 模块化的UI构建函数
-    QWidget* createHeaderWidget();
-    QWidget* createGridWidget();
-    QWidget* createFooterWidget();
+    QWidget*     createHeaderWidget();
+    QWidget*     createGridWidget();
+    QWidget*     createFooterWidget();
+    QPushButton* createDashboardButton(const QString &svgIconData,
+                                       const QString &title,
+                                       const QString &subtitle,
+                                       const QString &objectName);
 
-    // 创建仪表盘按钮的辅助函数，借鉴了你的优秀设计
-    QWidget* createDashboardButton(const QString &svgIconData, const QString &title, const QString &subtitle, const QString &objectName);
-    QStackedWidget *centralStack; // <--- 新增
-    QWidget *dashboardPage;       // <--- 新增
-    DoctorProfileWidget *profilePage;
-    PatientManagementWidget *patientManagementPage;
-    // 私有成员变量
-    AttendanceWidget *attendancePage;
-    QLabel *timeLabel;
-    QLabel *dateLabel;
-    QTimer *timer;
+    // ---- 成员 ----
+    Widget* api_ = nullptr;
+    int     doctorId_ = -1;
+    QString name_;
+
+    QStackedWidget *centralStack = nullptr;
+    QWidget *dashboardPage = nullptr;
+    DoctorProfileWidget *profilePage = nullptr;
+    PatientManagementWidget *patientManagementPage = nullptr;
+    AttendanceWidget *attendancePage = nullptr;
+
+    QLabel *timeLabel = nullptr;
+    QLabel *dateLabel = nullptr;
+    QTimer *timer = nullptr;
 };
 
 #endif // DOCTOR_MAIN_WINDOW_H

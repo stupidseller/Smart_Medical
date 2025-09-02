@@ -1,6 +1,7 @@
 #include "src/ui/widgets/common/login_dialog.h"
 #include "src/ui/widgets/widget.h"
 #include "src/ui/widgets/patient/patient_main_window.h"
+#include "src/ui/widgets/doctor/doctor_main_window.h"
 // main 里不要再把每个页面都 new 出来；页面在 PatientMainWindow 里按需创建
 #include <QApplication>
 #include <QMessageBox>
@@ -23,7 +24,7 @@ int main(int argc, char *argv[])
     loginDialog.show();
 
     // 3) Main 窗口指针用 QPointer 防悬挂
-    QPointer<PatientMainWindow> mainWin = nullptr;
+    QPointer<QWidget> mainWin = nullptr;
 
     // UI → TCP
     QObject::connect(&loginDialog, &LoginDialog::loginRequested,
@@ -38,26 +39,28 @@ int main(int argc, char *argv[])
         if (mainWin) { mainWin->disconnect(); mainWin->close(); mainWin->deleteLater(); mainWin = nullptr; }
 
         if (role == "patient") {
-            mainWin = new PatientMainWindow(&api, id, name);
-            QObject::connect(mainWin, &PatientMainWindow::logoutRequested, &loginDialog, [&](){
-                if (mainWin) {
-                    mainWin->disconnect();
-                    mainWin->close();
-                    mainWin->deleteLater();
-                    mainWin = nullptr;
-                }
-                loginDialog.onLoginTabClicked();
-                loginDialog.show(); loginDialog.raise(); loginDialog.activateWindow();
+            auto *win = new PatientMainWindow(&api, id, name);
+            mainWin = win;
+            QObject::connect(win, &PatientMainWindow::logoutRequested, &loginDialog, [&](){
+                if (mainWin) { mainWin->disconnect(); mainWin->close(); mainWin->deleteLater(); mainWin = nullptr; }
+                loginDialog.onLoginTabClicked(); loginDialog.show(); loginDialog.raise(); loginDialog.activateWindow();
+            });
+            loginDialog.hide(); win->show();
+
+        } else if (role == "doctor") {
+            auto *win = new DoctorMainWindow(&api, id, name);
+            mainWin = win;
+            QObject::connect(win, &DoctorMainWindow::logoutRequested, &loginDialog, [&](){
+                if (mainWin) { mainWin->disconnect(); mainWin->close(); mainWin->deleteLater(); mainWin = nullptr; }
+                loginDialog.onLoginTabClicked(); loginDialog.show(); loginDialog.raise(); loginDialog.activateWindow();
+            });
+            loginDialog.hide(); win->show();
+
+            } else {
+                QMessageBox::critical(nullptr, "错误", "未知角色");
+            }
             });
 
-            loginDialog.hide();
-            mainWin->show();
-        } else if (role == "doctor") {
-            QMessageBox::information(nullptr, "医生端占位", "医生端主界面待接入。");
-        } else {
-            QMessageBox::critical(nullptr, "错误", "未知角色");
-        }
-    });
 
     // 登录失败/注册结果
     QObject::connect(&api, &Widget::loginFailed, &loginDialog,

@@ -1362,140 +1362,111 @@ void Widget::handleRegister(QTcpSocket *sock, const QJsonObject &obj)
     qDebug() << "[register] raw json =" << obj;
 
     const QString username = obj.value("username").toString().trimmed();
-    const QString password = obj.value("password").toString();              // 明文直接存到 password_hash
-    const QString role     = obj.value("user_type").toString().trimmed();   // 前端传 user_type
+    const QString password = obj.value("password").toString();
+    const QString role     = obj.value("user_type").toString().trimmed();   // "patient"/"doctor"
     const QString name     = obj.value("name").toString().trimmed();
-    const QString phone    = obj.value("phone").toString().trimmed();       // patients.mobile
+    const QString phone    = obj.value("phone").toString().trimmed();
     const QString email    = obj.value("email").toString().trimmed();
+    const QString department = obj.value("department").toString().trimmed();
 
-    if (username.isEmpty() || password.isEmpty() || role != "patient") {
-        sendJson(sock, {{"type","register_result"},{"success",false},{"message","仅支持患者注册"}});
+    if (username.isEmpty() || password.isEmpty() ||
+        (role != "patient" && role != "doctor")) {
+        sendJson(sock, {{"type","register_result"},{"success",false},{"message","仅支持患者或医生注册"}});
         return;
     }
 
     QSqlDatabase db = QSqlDatabase::database();
-    qDebug() << "[register] driver =" << db.driverName() << " username =" << username;
-
-    // 账户重名检查（accounts.username 唯一）
-    {
-        QSqlQuery q(db);
-        const char *sql = "SELECT 1 FROM accounts WHERE username=:u LIMIT 1";
-        if (!q.prepare(sql)) {
-            qWarning() << "[register] prepare(check account) failed:" << q.lastError().text() << " query=" << sql;
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误(prepare)"}});
-            return;
-        }
-        q.bindValue(":u", username);
-        if (!q.exec()) {
-            qWarning() << "[register] exec(check account) error:" << q.lastError().text();
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}});
-            return;
-        }
-        if (q.next()) {
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","用户名已存在"}});
-            return;
-        }
-    }
-
-    // 患者档案重名检查（patients.username 唯一）
-    {
-        QSqlQuery q(db);
-        const char *sql = "SELECT 1 FROM patients WHERE username=:u LIMIT 1";
-        if (!q.prepare(sql)) {
-            qWarning() << "[register] prepare(check patient) failed:" << q.lastError().text() << " query=" << sql;
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误(prepare)"}});
-            return;
-        }
-        q.bindValue(":u", username);
-        if (!q.exec()) {
-            qWarning() << "[register] exec(check patient) error:" << q.lastError().text();
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}});
-            return;
-        }
-        if (q.next()) {
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","该用户已存在患者档案，请联系管理员处理"}});
-            return;
-        }
-    }
-
     if (!db.transaction()) {
         qWarning() << "[register] begin transaction failed:" << db.lastError().text();
         sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}});
         return;
     }
 
-    int pid = -1;
-
-    // 1) 插入 patients（列名：username, name, mobile, email）
+    // 账户重名检查（accounts.username 唯一）
     {
-        QSqlQuery ins(db);
-        const char *sql =
-            "INSERT INTO patients(username, name, mobile, email) "
-            "VALUES(:u, :n, :m, :e)";
-        if (!ins.prepare(sql)) {
-            qWarning() << "[register] prepare(insert patient) failed:" << ins.lastError().text() << " query=" << sql;
-            db.rollback();
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误(prepare)"}});
-            return;
-        }
-        ins.bindValue(":u", username);
-        ins.bindValue(":n", name.isEmpty() ? username : name);
-        ins.bindValue(":m", phone);
-        ins.bindValue(":e", email);
-
-        if (!ins.exec()) {
-            const QString err = ins.lastError().text();
-            qWarning() << "[register] insert patient error:" << err;
-            db.rollback();
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建患者失败: " + err}});
-            return;
-        }
-        pid = ins.lastInsertId().toInt();   // SQLite 可直接取
-        qDebug() << "[register] new patient_id =" << pid;
+        QSqlQuery q(db);
+        const char *sql = "SELECT 1 FROM accounts WHERE username=:u LIMIT 1";
+        q.prepare(sql);
+        q.bindValue(":u", username);
+        if (!q.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}}); return; }
+        if (q.next()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","用户名已存在"}}); return; }
     }
 
-    // 2) 插入 accounts（列名：password_hash）
-    {
-        QSqlQuery ins(db);
-        const char *sql =
-            "INSERT INTO accounts(username, password_hash, role, patient_id, is_active) "
-            "VALUES(:u, :p, 'patient', :pid, 1)";
-        if (!ins.prepare(sql)) {
-            qWarning() << "[register] prepare(insert account) failed:" << ins.lastError().text() << " query=" << sql;
-            db.rollback();
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误(prepare)"}});
-            return;
+    if (role == "patient") {
+        int pid = -1;
+        {   // patients
+            QSqlQuery ins(db);
+            ins.prepare("INSERT INTO patients(username, name, mobile, email) VALUES(:u,:n,:m,:e)");
+            ins.bindValue(":u", username);
+            ins.bindValue(":n", name.isEmpty()? username : name);
+            ins.bindValue(":m", phone);
+            ins.bindValue(":e", email);
+            if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建患者失败"}}); return; }
+            pid = ins.lastInsertId().toInt();
         }
-        ins.bindValue(":u", username);
-        ins.bindValue(":p", password);  // 明文直接写到 password_hash
-        ins.bindValue(":pid", pid);
-
-        if (!ins.exec()) {
-            const QString err = ins.lastError().text();
-            qWarning() << "[register] insert account error:" << err;
-            db.rollback();
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建账户失败: " + err}});
-            return;
+        {   // accounts
+            QSqlQuery ins(db);
+            ins.prepare("INSERT INTO accounts(username, password_hash, role, patient_id, is_active) VALUES(:u,:p,'patient',:pid,1)");
+            ins.bindValue(":u", username);
+            ins.bindValue(":p", password);
+            ins.bindValue(":pid", pid);
+            if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建账户失败"}}); return; }
         }
-    }
+        if (!db.commit()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}}); return; }
 
-    if (!db.commit()) {
-        const QString err = db.lastError().text();
-        qWarning() << "[register] commit failed:" << err;
-        db.rollback();
-        sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误: " + err}});
+        sendJson(sock, {{"type","register_result"},{"success",true},{"message","注册成功"},{"role","patient"},{"patient_id",pid},{"name", name.isEmpty()?username:name}});
         return;
     }
 
-    // ✅ 别忘了给前端回成功包
-    sendJson(sock, {
-        {"type","register_result"},
-        {"success",true},
-        {"message","注册成功"},
-        {"role","patient"},
-        {"patient_id", pid},
-        {"name", name.isEmpty() ? username : name}
-    });
+    // 医生分支
+    if (role == "doctor") {
+        if (department.isEmpty()) {
+            db.rollback();
+            sendJson(sock, {{"type","register_result"},{"success",false},{"message","医生注册需选择科室"}});
+            return;
+        }
+
+        int depId = -1;
+        {   // 找到或创建科室
+            QSqlQuery q(db);
+            q.prepare("SELECT department_id FROM departments WHERE name=:n LIMIT 1");
+            q.bindValue(":n", department);
+            if (!q.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误(查科室)"}}); return; }
+            if (q.next()) depId = q.value(0).toInt();
+            else {
+                QSqlQuery ins(db);
+                ins.prepare("INSERT INTO departments(name) VALUES(:n)");
+                ins.bindValue(":n", department);
+                if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建科室失败"}}); return; }
+                depId = ins.lastInsertId().toInt();
+            }
+        }
+
+        int did = -1;
+        {   // 插入 doctors（最少字段：name/title/department_id）
+            QSqlQuery ins(db);
+            ins.prepare("INSERT INTO doctors(name, title, department_id) VALUES(:n, :t, :dep)");
+            ins.bindValue(":n", name.isEmpty()? username : name);
+            ins.bindValue(":t", "住院医师");            // 默认职称，后续可在资料页修改
+            ins.bindValue(":dep", depId);
+            if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建医生失败"}}); return; }
+            did = ins.lastInsertId().toInt();
+        }
+
+        {   // 插入 accounts（role=doctor）
+            QSqlQuery ins(db);
+            ins.prepare("INSERT INTO accounts(username, password_hash, role, doctor_id, is_active) VALUES(:u, :p, 'doctor', :did, 1)");
+            ins.bindValue(":u", username);
+            ins.bindValue(":p", password);
+            ins.bindValue(":did", did);
+            if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建账户失败"}}); return; }
+        }
+
+        if (!db.commit()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}}); return; }
+
+        sendJson(sock, {{"type","register_result"},{"success",true},{"message","注册成功"},{"role","doctor"},{"doctor_id",did},{"name", name.isEmpty()?username:name}});
+        return;
+    }
 }
 
 void Widget::sendJson(QTcpSocket *sock, const QJsonObject &obj)
