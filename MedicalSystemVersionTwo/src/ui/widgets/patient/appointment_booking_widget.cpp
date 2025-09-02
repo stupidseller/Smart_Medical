@@ -251,7 +251,7 @@ QWidget* AppointmentBookingWidget::createSlotWidget(const AppointmentSlot &slot)
 
 // --- 槽函数实现 ---
 void AppointmentBookingWidget::onSearchClicked() {
-    loadAvailableDoctors();
+    // loadAvailableDoctors();
 }
 
 void AppointmentBookingWidget::onBookNowClicked(const QString &doctorName, const QString &timeSlot) {

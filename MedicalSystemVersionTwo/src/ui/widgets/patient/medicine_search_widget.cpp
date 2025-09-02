@@ -242,7 +242,7 @@ MedicineSearchWidget::MedicineSearchWidget(QWidget *parent)
           currentCategory("全部"), warningFrame(nullptr)
 {
     setObjectName("MedicineSearchWidget");
-    loadMedicineData();
+    // loadMedicineData();
     initUI();
     initStyleSheets();
     updateMedicineList();

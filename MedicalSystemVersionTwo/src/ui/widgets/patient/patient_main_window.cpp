@@ -294,10 +294,9 @@ void PatientMainWindow::showAppointmentBookingWidget() {
         // 页面 -> Widget：请求可预约医生
         connect(appointmentPage, &AppointmentBookingWidget::requestLoadAvailableDoctors,
                 api,            &Widget::loadAvailableDoctors);
-
-        // Widget -> 页面：返回可预约医生
         connect(api,            &Widget::loadAvailableDoctorsOk,
                 appointmentPage,&AppointmentBookingWidget::onLoadAvailableDoctorsOk);
+        QTimer::singleShot(0, appointmentPage, &AppointmentBookingWidget::loadAvailableDoctors);
 
         mainStackedWidget->addWidget(appointmentPage);
     }
@@ -312,10 +311,9 @@ void PatientMainWindow::showDoctorInfoWidget() {
 
         connect(doctorInfoPage, &DoctorInfoWidget::requestLoadDoctorList,
                 api,            &Widget::loadDoctorList);
-
         connect(api,            &Widget::loadDoctorListOk,
                 doctorInfoPage, &DoctorInfoWidget::onLoadDoctorListOk);
-
+        QTimer::singleShot(0, doctorInfoPage, &DoctorInfoWidget::loadDoctorList);
         mainStackedWidget->addWidget(doctorInfoPage);
     }
     mainStackedWidget->setCurrentWidget(doctorInfoPage);
@@ -351,10 +349,11 @@ void PatientMainWindow::showMedicineSearchWidget() {
 
         connect(medicineSearchPage, &MedicineSearchWidget::requestLoadMedicineData,
                 api,                &Widget::loadMedicineData);
-
         connect(api,                &Widget::loadMedicineDataOk,
                 medicineSearchPage, &MedicineSearchWidget::onLoadMedicineDataOk);
 
+        // ★
+        QTimer::singleShot(0, medicineSearchPage, &MedicineSearchWidget::loadMedicineData);
         // ★★★ 删除/注释你原来试图把 MedicineSearchWidget::onPurchaseClicked（私有槽）
         //     强行连到 Widget::onPurchaseClicked 的几行——那是本次错误的根源之一。
 

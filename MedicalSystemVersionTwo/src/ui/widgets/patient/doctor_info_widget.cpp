@@ -18,7 +18,7 @@ DoctorInfoWidget::DoctorInfoWidget(QWidget *parent)
     setObjectName("DoctorInfoWidget");
     initUI();
     initStyleSheets();
-    loadDoctorList();
+    // loadDoctorList();
 }
 
 DoctorInfoWidget::~DoctorInfoWidget() {}
