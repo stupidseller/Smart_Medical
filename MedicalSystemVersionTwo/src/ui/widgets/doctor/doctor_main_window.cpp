@@ -1,6 +1,9 @@
 #include "doctor_main_window.h"
 #include "attendance_widget.h"
+#include "medical_record_dialog.h"
 #include "patient_management_widget.h"
+#include "medical_orders_dialog.h"
+#include "widget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -12,8 +15,24 @@
 #include <QDebug>
 #include "doctor_profile_widget.h"
 #include <QStackedWidget>
-// --- 嵌入式SVG图标数据 ---
-// 借鉴你的方法，我们将所有图标作为SVG数据直接嵌入，无需.qrc文件
+#include <QMessageBox>
+
+// 新增：用到 QJsonObject/QJsonArray 的 lambda 需要这个
+#include <QJsonObject>
+#include <QJsonArray>
+
+// === 新增：UI 版本里的类/头 ===
+#include <QMenu>
+#include <QAction>
+#include <QEvent>
+#include <QCursor>
+#include <QPoint>
+
+// 如果你项目里文件名不同，请把下面两个 include 替换为实际头文件名
+#include "doctor_communication_widget.h"
+#include "prescription_widget.h"
+
+// --- 嵌入式SVG图标数据（保持你的主代码版本，白色描边，不动） ---
 static const char* userIcon = R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>)";
 static const char* usersIcon = R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>)";
 static const char* calendarIcon = R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>)";
@@ -33,16 +52,26 @@ DoctorMainWindow::DoctorMainWindow(Widget* api, int doctorId, const QString& nam
     connect(timer, &QTimer::timeout, this, &DoctorMainWindow::updateClock);
     timer->start(1000);
     updateClock();
+
+    userMenu = new QMenu(this);
+    userMenu->addAction("个人中心", this, &DoctorMainWindow::showProfilePage);
+    userMenu->addSeparator();
+    QAction *logoutAction = userMenu->addAction("退出登录");
+    connect(logoutAction, &QAction::triggered, this, &DoctorMainWindow::onLogoutClicked);
+
+    // ★ userNameLabel 现为成员，直接判空使用
+    if (userNameLabel) {
+        userNameLabel->setCursor(Qt::PointingHandCursor);
+        userNameLabel->installEventFilter(this);
+    }
 }
-
-DoctorMainWindow::~DoctorMainWindow() {}
-
+DoctorMainWindow::~DoctorMainWindow() = default;
 void DoctorMainWindow::initUI() {
     this->setObjectName("doctorMainWindow");
     this->resize(1024, 768);
 
     centralStack = new QStackedWidget(this);
-    setCentralWidget(centralStack);                   // ✅ QMainWindow 的用法
+    setCentralWidget(centralStack);
 
     // --- 仪表盘页面 ---
     dashboardPage = new QWidget();
@@ -61,6 +90,10 @@ void DoctorMainWindow::initUI() {
     profilePage = nullptr;
     attendancePage = nullptr;
     patientManagementPage = nullptr;
+
+    // ★ 统一成员名
+    communicationWidget = nullptr;
+    prescriptionPage = nullptr;
 }
 
 QWidget* DoctorMainWindow::createHeaderWidget() {
@@ -71,7 +104,6 @@ QWidget* DoctorMainWindow::createHeaderWidget() {
     QLabel *titleLabel = new QLabel("智慧医院医生工作平台");
     titleLabel->setObjectName("headerTitleLabel");
 
-    // 时间日期
     QWidget *timeDateWidget = new QWidget();
     QVBoxLayout *timeDateLayout = new QVBoxLayout(timeDateWidget);
     timeDateLayout->setContentsMargins(0,0,0,0);
@@ -85,7 +117,6 @@ QWidget* DoctorMainWindow::createHeaderWidget() {
     timeDateLayout->addWidget(timeLabel);
     timeDateLayout->addWidget(dateLabel);
 
-    // 用户信息
     QWidget *userWidget = new QWidget();
     QHBoxLayout *userLayout = new QHBoxLayout(userWidget);
     userLayout->setContentsMargins(0,0,0,0);
@@ -93,7 +124,9 @@ QWidget* DoctorMainWindow::createHeaderWidget() {
     auto *userIconWidget = new QSvgWidget();
     userIconWidget->load(QByteArray(userIcon));
     userIconWidget->setFixedSize(24, 24);
-    QLabel *userNameLabel = new QLabel(name_.isEmpty() ? "医生" : name_);
+
+    // ★ 成员赋值
+    userNameLabel = new QLabel(name_.isEmpty() ? "医生" : name_);
     userNameLabel->setObjectName("userNameLabel");
     userLayout->addWidget(userIconWidget);
     userLayout->addWidget(userNameLabel);
@@ -105,6 +138,7 @@ QWidget* DoctorMainWindow::createHeaderWidget() {
     layout->addWidget(userWidget);
     return headerWidget;
 }
+
 QWidget* DoctorMainWindow::createGridWidget() {
     QWidget *gridContainer = new QWidget();
     QGridLayout *gridLayout = new QGridLayout(gridContainer);
@@ -126,13 +160,18 @@ QWidget* DoctorMainWindow::createGridWidget() {
     gridLayout->addWidget(btnOrders,        1, 1);
     gridLayout->addWidget(btnPrescription,  1, 2);
 
-    // 只连你的页面切换槽（不要再连 qDebug 的重复槽）
+    // === 只连你的页面切换槽（保留） ===
     connect(btnPersonalInfo, &QPushButton::clicked, this, &DoctorMainWindow::showProfilePage);
     connect(btnAttendance,   &QPushButton::clicked, this, &DoctorMainWindow::showAttendancePage);
     connect(btnPatientInfo,  &QPushButton::clicked, this, &DoctorMainWindow::showPatientManagementPage);
 
+    // === 新增：对 UI 版新增页面的连接（不影响原有逻辑） ===
+    connect(btnCommunication, &QPushButton::clicked, this, &DoctorMainWindow::showCommunicationPage);
+    connect(btnPrescription,  &QPushButton::clicked, this, &DoctorMainWindow::showPrescriptionPage);
+
     return gridContainer;
 }
+
 QPushButton* DoctorMainWindow::createDashboardButton(const QString &svgIconData,
                                                      const QString &title,
                                                      const QString &subtitle,
@@ -183,35 +222,298 @@ void DoctorMainWindow::updateClock() {
     if (timeLabel) timeLabel->setText(current.toString("hh:mm:ss"));
     if (dateLabel) dateLabel->setText(current.toString("yyyy.MM.dd dddd"));
 }
+
+// === 以下三个保持你的主逻辑（包含 api_ 信号/槽） ===
 void DoctorMainWindow::showProfilePage() {
     if (!profilePage) {
         profilePage = new DoctorProfileWidget();
         connect(profilePage, &DoctorProfileWidget::backRequested, this, &DoctorMainWindow::showDashboardPage);
+        // Widget → Profile
+        connect(api_, &Widget::currentDataDoctorOk,     profilePage, &DoctorProfileWidget::setDoctorProfile);
+        connect(api_, &Widget::currentDataDoctorFailed, profilePage, &DoctorProfileWidget::showError);
+        // Profile → Widget
+        connect(profilePage, &DoctorProfileWidget::saveRequested, api_, &Widget::sendUpdateDoctorProfile);
+
+        // ⭐ 新增：保存回执 → 控件提示
+        connect(api_, &Widget::updateDoctorProfileDone,
+                profilePage, &DoctorProfileWidget::onSaveResult);
+
+        // ⭐ 新增：保存成功后，主动重新拉我的资料，保证展示是服务器最新
+        connect(api_, &Widget::updateDoctorProfileDone, this, [this](bool ok, const QString &){
+            if (ok) api_->loadCurrentDoctorDataByDoctorId(doctorId_);
+        });
+
         centralStack->addWidget(profilePage);
+        api_->loadCurrentDoctorDataByDoctorId(doctorId_);  // 拉取一次
     }
     centralStack->setCurrentWidget(profilePage);
 }
+
 void DoctorMainWindow::showPatientManagementPage() {
     if (!patientManagementPage) {
         patientManagementPage = new PatientManagementWidget();
-        connect(patientManagementPage, &PatientManagementWidget::backRequested, this, &DoctorMainWindow::showDashboardPage);
+        connect(patientManagementPage, &PatientManagementWidget::backRequested,
+                this, &DoctorMainWindow::showDashboardPage);
+
+        // 列表数据
+        connect(api_, &Widget::loadPatientListOk,
+                patientManagementPage, &PatientManagementWidget::setPatientList);
+
+        // 条目 -> 打开对话框/拉取数据
+        connect(patientManagementPage, &PatientManagementWidget::openProfileRequested,
+                api_, &Widget::sendGetPatientProfile);
+
+        connect(patientManagementPage, &PatientManagementWidget::openMedicalRecordRequested,
+                this, [this](int pid, const QString &name){ openMedicalRecordDialog(pid, name); });
+
+        connect(patientManagementPage, &PatientManagementWidget::openMedicalOrdersRequested,
+                this, [this](int pid, const QString &name){ openMedicalOrdersDialog(pid, name); });
+
+        connect(patientManagementPage, &PatientManagementWidget::refreshItemRequested,
+                this, [this](int pid){
+                    api_->sendGetPatientProfile(pid);
+                    api_->loadMedicalRecord(pid);
+                    api_->loadMedicalOrders(pid);
+                });
+
+        // ★ 修复：以下三个是 PatientManagementWidget 的 private 成员，不能直接 connect
+        // connect(api_, &Widget::patientProfileLoaded, patientManagementPage, &PatientManagementWidget::updateListItemProfile);
+        // connect(api_, &Widget::medicalRecordLoaded,  patientManagementPage, &PatientManagementWidget::updateListItemRecordFlag);
+        // connect(api_, &Widget::medicalOrdersLoaded,  patientManagementPage, &PatientManagementWidget::updateListItemOrdersFlag);
+
+        // 可保留：用于右侧详情卡
+        connect(patientManagementPage, &PatientManagementWidget::requestLoadPatientProfile,
+                api_, &Widget::sendGetPatientProfile);
+        connect(api_, &Widget::patientProfileLoaded,
+                patientManagementPage, &PatientManagementWidget::setPatientProfile);
+
         centralStack->addWidget(patientManagementPage);
     }
     centralStack->setCurrentWidget(patientManagementPage);
+    api_->loadPatientList();
 }
+// ★ 补上声明对应的定义（最小实现即可通过编译）
+void DoctorMainWindow::openMedicalRecordDialog(int patientId, const QString &patientName) {
+    auto *dlg = new MedicalRecordDialog(patientId, patientName, this);
 
+    // 典型接线（如项目已有可按需补全/对齐）
+    connect(dlg, &MedicalRecordDialog::requestLoadRecord,
+            this, [this](int pid){ api_->loadMedicalRecord(pid); });
+    connect(dlg, &MedicalRecordDialog::requestSaveRecord,
+            this, [this](const QJsonObject &obj){ api_->saveMedicalRecord(obj); });
 
-void DoctorMainWindow::showDashboardPage() {
-    centralStack->setCurrentWidget(dashboardPage);
+    connect(api_, &Widget::medicalRecordLoaded,
+            dlg,  &MedicalRecordDialog::onRecordLoaded);
+    connect(api_, &Widget::medicalRecordSaved,
+            dlg,  &MedicalRecordDialog::onRecordSaved);
+
+    // 进入即加载
+    api_->loadMedicalRecord(patientId);
+    dlg->open();
+}
+void DoctorMainWindow::openMedicalOrdersDialog(int patientId, const QString &patientName) {
+    auto *dlg = new MedicalOrdersDialog(patientId, patientName, this);
+    connect(dlg, &MedicalOrdersDialog::requestLoadOrders,
+            this, [this](int pid, int orderId){ api_->loadMedicalOrders(pid, orderId); });
+    connect(dlg, &MedicalOrdersDialog::requestSaveOrders,
+            this, [this](const QJsonObject &payload){ if (!payload.isEmpty()) api_->saveMedicalOrders(payload); });
+
+    connect(api_, &Widget::medicalOrdersLoaded, dlg, &MedicalOrdersDialog::onOrdersLoaded);
+    connect(api_, &Widget::medicalOrdersSaved, dlg, &MedicalOrdersDialog::onOrdersSaved);
+
+    api_->loadMedicalOrders(patientId, 0);
+    dlg->open();
 }
 void DoctorMainWindow::showAttendancePage() {
     if (!attendancePage) {
         attendancePage = new AttendanceWidget();
-        connect(attendancePage, &AttendanceWidget::backRequested, this, &DoctorMainWindow::showDashboardPage);
+        connect(attendancePage, &AttendanceWidget::backRequested,
+                this, &DoctorMainWindow::showDashboardPage);
+
+        // === Widget → Page ===
+        connect(api_, &Widget::leaveRecordsLoaded,
+                attendancePage, &AttendanceWidget::onLeaveRecordsLoaded);
+
+        connect(api_, &Widget::attendanceTodayLoaded,
+                attendancePage, &AttendanceWidget::onAttendanceTodayLoaded);
+
+        connect(api_, &Widget::clockEventDone,
+                attendancePage, &AttendanceWidget::onClockEventDone);
+
+        // === Page → Main → Widget ===
+        connect(attendancePage, &AttendanceWidget::requestLoadAttendanceToday,
+                this, [this]{ api_->loadAttendanceToday(doctorId_); });
+
+        connect(attendancePage, &AttendanceWidget::requestClockEvent,
+                this, [this](const QString &kind){ api_->clockEvent(doctorId_, kind); });
+
+        connect(attendancePage, &AttendanceWidget::requestSubmitLeave,
+                this, [this](const QString &leaveType,
+                             const QString &start,
+                             const QString &end,
+                             const QString &reason){
+                    api_->submitLeave(doctorId_, leaveType, start, end, reason);
+                });
+
+        // 已有：销假占位
+        connect(attendancePage, &AttendanceWidget::requestCancelLeave,
+                this, [this](int leaveId){
+                    // api_->revokeLeave(doctorId_, leaveId); // 等后端接口
+                    qDebug() << "[UI] requestCancelLeave" << leaveId << "(待接入服务器接口)";
+                });
+
+        // 留在你原逻辑：请假提交结果 -> 弹窗 & 刷新列表
+        connect(api_, &Widget::leaveSubmitted, this, [this](const QJsonObject &obj){
+            const bool ok = obj.value("success").toBool(true);
+            if (ok) {
+                QMessageBox::information(this, "已提交", "请假提交成功。");
+                api_->loadLeaveRecords(doctorId_);
+            } else {
+                QMessageBox::warning(this, "提交失败",
+                                     obj.value("error").toString("未知错误"));
+            }
+        });
+
         centralStack->addWidget(attendancePage);
     }
+
     centralStack->setCurrentWidget(attendancePage);
+
+    // 进入页面：拉取今日考勤与请假记录
+    api_->loadAttendanceToday(doctorId_);
+    api_->loadLeaveRecords(doctorId_);
 }
+void DoctorMainWindow::showCommunicationPage() {
+    if (!communicationWidget) {
+        communicationWidget = new CommunicationWidget();
+        centralStack->addWidget(communicationWidget);
+
+        // === Widget → UI ===
+        connect(api_, &Widget::doctorContactsLoadedOk,
+                communicationWidget, &CommunicationWidget::setContacts);
+        connect(api_, &Widget::doctorContactsLoadedFailed,
+                communicationWidget, &CommunicationWidget::showError);
+
+        connect(api_, &Widget::chatHistoryLoadedOk,
+                communicationWidget, &CommunicationWidget::setMessages);
+        connect(api_, &Widget::chatHistoryLoadedFailed,
+                communicationWidget, &CommunicationWidget::showError);
+
+        connect(api_, &Widget::messageSentOk,
+                communicationWidget, &CommunicationWidget::appendMessage);
+        connect(api_, &Widget::messageSentFailed,
+                communicationWidget, &CommunicationWidget::showError);
+
+        // === UI → Widget（经由 Main）===
+        connect(communicationWidget, &CommunicationWidget::requestLoadContacts,
+                this, [this]{ api_->loadDoctorContactsForDoctor(doctorId_); });
+        connect(communicationWidget, &CommunicationWidget::requestOpenConversation,
+                this, [this](int convId){ api_->loadChatHistoryByConversation(convId, 200); });
+        connect(communicationWidget, &CommunicationWidget::requestSendMessageByConv,
+                this, [this](int convId, const QString &text){
+                    api_->sendChatMessageByConversation(convId, "doctor", text);
+                });
+        connect(communicationWidget, &CommunicationWidget::requestSendMessageByPeer,
+                this, [this](int patientId, const QString &text){
+                    api_->sendChatMessageByPeer(patientId, doctorId_, "doctor", text);
+                });
+
+        connect(communicationWidget, &CommunicationWidget::backRequested,
+                this, &DoctorMainWindow::showDashboardPage);
+    }
+
+    api_->loadDoctorContactsForDoctor(doctorId_);
+    centralStack->setCurrentWidget(communicationWidget);
+}
+
+void DoctorMainWindow::showPrescriptionPage() {
+    if (!prescriptionPage) {
+        prescriptionPage = new PrescriptionWidget();
+        connect(prescriptionPage, &PrescriptionWidget::backRequested,
+                this, &DoctorMainWindow::showDashboardPage);
+        centralStack->addWidget(prescriptionPage);
+
+        // === API → UI ===
+        connect(api_, &Widget::loadPatientListOk,
+                prescriptionPage, &PrescriptionWidget::setPatientList);
+
+        connect(api_, &Widget::loadMedicineDataOk,
+                prescriptionPage, &PrescriptionWidget::setMedicineCatalog);
+
+        // === UI → API ===
+        // 暂存：放到本地购物车（Widget 内部会 emit addToCartOk）
+        connect(prescriptionPage, &PrescriptionWidget::saveRequested,
+                this, [this](const QJsonObject &){
+            const int pid = prescriptionPage->currentPatientId();
+            if (pid < 0) { QMessageBox::warning(this, "提示", "请先选择患者"); return; }
+            const QJsonArray cart = prescriptionPage->cartFromCurrentSelection();
+            api_->addToCart(cart, 0);
+        });
+
+        // 开具处方：提交到后端（Widget 会发 onPurchaseClickedOk）
+        connect(prescriptionPage, &PrescriptionWidget::issueRequested,
+                this, [this](const QJsonObject &){
+            const int pid = prescriptionPage->currentPatientId();
+            if (pid < 0) { QMessageBox::warning(this, "提示", "请先选择患者"); return; }
+            const QJsonArray cart = prescriptionPage->cartFromCurrentSelection();
+            api_->onPurchaseClicked(pid, cart, 0);
+        });
+
+        // 结果反馈
+        connect(api_, &Widget::addToCartOk, this, [this](const QJsonObject &order){
+            Q_UNUSED(order);
+            QMessageBox::information(this, "已暂存", "处方已暂存到本地订单草稿。");
+        });
+        connect(api_, &Widget::onPurchaseClickedOk, this, [this](const QJsonObject &resp){
+            if (resp.value("success").toBool(true))
+                QMessageBox::information(this, "提交成功", "处方已提交至药房/收费。");
+            else
+                QMessageBox::warning(this, "提交失败", resp.value("error").toString("未知错误"));
+        });
+    }
+
+    centralStack->setCurrentWidget(prescriptionPage);
+
+    // 进入页面自动拉取患者与药品目录
+    api_->loadPatientList();
+    api_->loadMedicineData();
+}
+void DoctorMainWindow::showDashboardPage() {
+    centralStack->setCurrentWidget(dashboardPage);
+}
+
+// === 用户菜单 ===
+void DoctorMainWindow::showUserMenu() {
+    if (userNameLabel && userMenu) {
+        const QPoint pos = userNameLabel->mapToGlobal(
+            QPoint(userNameLabel->width() - userMenu->sizeHint().width(), userNameLabel->height()));
+        userMenu->popup(pos);
+    }
+}
+void DoctorMainWindow::onLogoutClicked() {
+    qDebug() << "请求退出登录，关闭窗口。";
+    this->close();
+}
+
+bool DoctorMainWindow::eventFilter(QObject *obj, QEvent *event) {
+    if (obj == userNameLabel) {
+        if (event->type() == QEvent::Enter) {
+            showUserMenu();
+            return true;
+        } else if (event->type() == QEvent::Leave) {
+            QTimer::singleShot(150, this, [this](){
+                if (userNameLabel &&
+                    !userNameLabel->geometry().contains(userNameLabel->mapFromGlobal(QCursor::pos())) &&
+                    userMenu && !userMenu->geometry().contains(QCursor::pos())) {
+                    userMenu->hide();
+                }
+            });
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(obj, event);
+}
+
 void DoctorMainWindow::applyStyles() {
     this->setStyleSheet(R"(
         #doctorMainWindow {
@@ -234,8 +536,13 @@ void DoctorMainWindow::applyStyles() {
         }
         #userNameLabel {
             font-size: 16px;
-            color: #555555;
+            color: #2B6CB0; /* 适度融合 UI 版的蓝色文字 */
             font-weight: bold;
+            padding: 6px 10px; /* 为悬停点击留出热区 */
+            border-radius: 6px;
+        }
+        #userNameLabel:hover {
+            background-color: #EBF8FF; /* 轻微高亮 */
         }
         #footerLabel {
             font-size: 14px;
@@ -276,5 +583,27 @@ void DoctorMainWindow::applyStyles() {
         #btnRecords { background-color: #5D6D7E; }
         #btnOrders { background-color: #E74C3C; }
         #btnPrescription { background-color: #1ABC9C; }
+
+        /* === 新增：菜单样式（不影响原布局） === */
+        QMenu {
+            background-color: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 6px;
+        }
+        QMenu::item {
+            padding: 8px 25px 8px 15px;
+            color: #2D3748;
+            font-size: 14px;
+        }
+        QMenu::item:selected {
+            background-color: #EBF8FF;
+            border-radius: 5px;
+        }
+        QMenu::separator {
+            height: 1px;
+            background-color: #E2E8F0;
+            margin: 5px 0px;
+        }
     )");
 }

@@ -1,308 +1,324 @@
 #include "medical_orders_dialog.h"
-#include <QApplication>
-#include <QScreen>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGridLayout>
 #include <QHeaderView>
-#include <QTableWidgetItem>
-#include <QDebug>
-#include <QTimer>
+#include <QDateTime>
+#include <QMessageBox>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
 
-MedicalOrdersDialog::MedicalOrdersDialog(const PatientData &patientData, QWidget *parent)
-        : QDialog(parent), m_patientData(patientData)
+static QString yuan(double v) {
+    return QString::number(v, 'f', 2);
+}
+
+MedicalOrdersDialog::MedicalOrdersDialog(int patientId,
+                                         const QString &patientName,
+                                         QWidget *parent)
+    : QDialog(parent),
+      patientId_(patientId),
+      patientName_(patientName)
 {
-    setWindowTitle("长期医嘱单");
-    setModal(true);
-    setAttribute(Qt::WA_DeleteOnClose, false); // 防止自动删除
-
-    // 设置固定窗口大小
-    resize(900, 700);
-
-    // 居中显示
-    if (parent) {
-        move(parent->geometry().center() - rect().center());
-    }
-
-    // 初始化所有成员指针
-    initPointers();
-
-    // 同步初始化UI，避免异步问题
-    initUI();
-    loadPatientData(patientData);
-    setupTableData(); // 直接设置表格数据，不使用定时器
+    setWindowTitle("医嘱管理");
+    resize(1000, 640);
+    buildUi();
     applyStyles();
 }
 
-void MedicalOrdersDialog::initPointers()
+MedicalOrdersDialog::MedicalOrdersDialog(int patientId,
+                                         int orderId,
+                                         const QString &patientName,
+                                         QWidget *parent)
+    : MedicalOrdersDialog(patientId, patientName, parent)
 {
-    m_ordersTable = nullptr;
-    m_notesEdit = nullptr;
-    m_nameLabel = nullptr;
-    m_genderLabel = nullptr;
-    m_ageLabel = nullptr;
-    m_patientIdLabel = nullptr;
-    m_deptLabel = nullptr;
-    m_bedLabel = nullptr;
-    m_admitDateLabel = nullptr;
-    m_diagnosisLabel = nullptr;
+    orderId_ = orderId;
+    if (lblOrderId_) lblOrderId_->setText(orderId_ > 0
+        ? QString("医嘱单：#%1").arg(orderId_)
+        : QString("医嘱单：新建"));
 }
 
-void MedicalOrdersDialog::initUI()
+void MedicalOrdersDialog::buildUi()
 {
-    QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(20);
-    mainLayout->setContentsMargins(30, 25, 30, 25);
+    auto *main = new QVBoxLayout(this);
+    main->setContentsMargins(18,18,18,18);
+    main->setSpacing(12);
 
-    // 添加各个部分
-    mainLayout->addWidget(createHeader());
-    mainLayout->addWidget(createPatientInfo());
-    mainLayout->addWidget(createOrdersTable(), 1);
-    mainLayout->addWidget(createNotesSection());
+    // 顶部区域：基本信息
+    {
+        auto *top = new QGridLayout();
+        top->setHorizontalSpacing(12);
+        top->setVerticalSpacing(8);
 
-    // 关闭按钮
-    QHBoxLayout *buttonLayout = new QHBoxLayout();
-    buttonLayout->addStretch();
-    QPushButton *closeBtn = new QPushButton("关闭", this); // 明确指定父对象
-    closeBtn->setObjectName("closeButton");
-    closeBtn->setMinimumSize(100, 35);
-    connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
-    buttonLayout->addWidget(closeBtn);
+        lblPatient_ = new QLabel(QString("患者：%1（ID:%2）").arg(patientName_).arg(patientId_));
+        lblOrderId_ = new QLabel("医嘱单：新建");
 
-    mainLayout->addLayout(buttonLayout);
-}
+        edtDept_   = new QLineEdit(); edtDept_->setPlaceholderText("科室（可选）");
+        edtDoctor_ = new QLineEdit(); edtDoctor_->setPlaceholderText("开立医生（可选）");
+        edtNote_   = new QLineEdit(); edtNote_->setPlaceholderText("单据备注（可选）");
 
-QWidget* MedicalOrdersDialog::createHeader()
-{
-    QWidget *headerWidget = new QWidget(this);
-    QVBoxLayout *layout = new QVBoxLayout(headerWidget);
-    layout->setSpacing(15);
-    layout->setAlignment(Qt::AlignCenter);
+        int r=0;
+        top->addWidget(lblPatient_, r,0,1,2);
+        top->addWidget(lblOrderId_, r,2,1,2); r++;
+        top->addWidget(new QLabel("科室"),  r,0); top->addWidget(edtDept_,   r,1);
+        top->addWidget(new QLabel("医生"),  r,2); top->addWidget(edtDoctor_, r,3); r++;
+        top->addWidget(new QLabel("备注"),  r,0); top->addWidget(edtNote_,   r,1,1,3);
 
-    QLabel *hospitalLabel = new QLabel("智慧医院", headerWidget);
-    hospitalLabel->setObjectName("hospitalTitle");
-
-    QLabel *titleLabel = new QLabel("长期医嘱单", headerWidget);
-    titleLabel->setObjectName("recordTitle");
-
-    // 分割线
-    QFrame *line = new QFrame(headerWidget);
-    line->setFrameShape(QFrame::HLine);
-    line->setFrameShadow(QFrame::Sunken);
-    line->setObjectName("titleLine");
-
-    layout->addWidget(hospitalLabel);
-    layout->addWidget(titleLabel);
-    layout->addWidget(line);
-
-    return headerWidget;
-}
-
-QWidget* MedicalOrdersDialog::createPatientInfo()
-{
-    QFrame *infoFrame = new QFrame(this);
-    infoFrame->setObjectName("patientInfoFrame");
-
-    QGridLayout *grid = new QGridLayout(infoFrame);
-    grid->setSpacing(15);
-    grid->setContentsMargins(20, 15, 20, 15);
-
-    // 第一行
-    grid->addWidget(new QLabel("姓名", infoFrame), 0, 0);
-    m_nameLabel = new QLabel(infoFrame);
-    m_nameLabel->setObjectName("dataLabel");
-    grid->addWidget(m_nameLabel, 0, 1);
-
-    grid->addWidget(new QLabel("性别", infoFrame), 0, 2);
-    m_genderLabel = new QLabel(infoFrame);
-    m_genderLabel->setObjectName("dataLabel");
-    grid->addWidget(m_genderLabel, 0, 3);
-
-    grid->addWidget(new QLabel("年龄", infoFrame), 0, 4);
-    m_ageLabel = new QLabel(infoFrame);
-    m_ageLabel->setObjectName("dataLabel");
-    grid->addWidget(m_ageLabel, 0, 5);
-
-    // 第二行
-    grid->addWidget(new QLabel("病房号", infoFrame), 1, 0);
-    m_patientIdLabel = new QLabel(infoFrame);
-    m_patientIdLabel->setObjectName("dataLabel");
-    grid->addWidget(m_patientIdLabel, 1, 1);
-
-    grid->addWidget(new QLabel("科室", infoFrame), 1, 2);
-    m_deptLabel = new QLabel(infoFrame);
-    m_deptLabel->setObjectName("dataLabel");
-    grid->addWidget(m_deptLabel, 1, 3);
-
-    grid->addWidget(new QLabel("床号", infoFrame), 1, 4);
-    m_bedLabel = new QLabel(infoFrame);
-    m_bedLabel->setObjectName("dataLabel");
-    grid->addWidget(m_bedLabel, 1, 5);
-
-    // 第三行
-    grid->addWidget(new QLabel("入院日期", infoFrame), 2, 0);
-    m_admitDateLabel = new QLabel(infoFrame);
-    m_admitDateLabel->setObjectName("dataLabel");
-    grid->addWidget(m_admitDateLabel, 2, 1);
-
-    grid->addWidget(new QLabel("诊断", infoFrame), 2, 2);
-    m_diagnosisLabel = new QLabel(infoFrame);
-    m_diagnosisLabel->setObjectName("dataLabel");
-    grid->addWidget(m_diagnosisLabel, 2, 3, 1, 3); // 跨3列
-
-    return infoFrame;
-}
-
-QWidget* MedicalOrdersDialog::createOrdersTable()
-{
-    QWidget *tableContainer = new QWidget(this);
-    QVBoxLayout *layout = new QVBoxLayout(tableContainer);
-    layout->setSpacing(0);
-    layout->setContentsMargins(0, 0, 0, 0);
-
-    m_ordersTable = new QTableWidget(tableContainer); // 指定父对象
-    m_ordersTable->setObjectName("ordersTable");
-
-    // 设置基本属性
-    m_ordersTable->setColumnCount(5);
-    m_ordersTable->setRowCount(0);
-
-    // 设置列标题
-    QStringList headers;
-    headers << "日期" << "时间" << "医嘱内容" << "医生" << "签名";
-    m_ordersTable->setHorizontalHeaderLabels(headers);
-
-    // 设置表格属性
-    m_ordersTable->setAlternatingRowColors(false);
-    m_ordersTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_ordersTable->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_ordersTable->setShowGrid(true);
-    m_ordersTable->setGridStyle(Qt::SolidLine);
-    m_ordersTable->verticalHeader()->setVisible(false);
-
-    // 设置列宽 - 同步设置，不使用定时器
-    QHeaderView *header = m_ordersTable->horizontalHeader();
-    if (header) {
-        header->setStretchLastSection(true);
-        m_ordersTable->setColumnWidth(0, 100);  // 日期
-        m_ordersTable->setColumnWidth(1, 80);   // 时间
-        m_ordersTable->setColumnWidth(2, 350);  // 医嘱内容
-        m_ordersTable->setColumnWidth(3, 100);  // 医生
+        main->addLayout(top);
     }
 
-    layout->addWidget(m_ordersTable);
-    return tableContainer;
-}
+    // 表格
+    {
+        tbl_ = new QTableWidget();
+        tbl_->setObjectName("ordersItemsTable");
+        tbl_->setColumnCount(8);
+        tbl_->setHorizontalHeaderLabels(QStringList()
+            << "项目/内容"  // 0: item_name/content
+            << "剂量"      // 1: dose
+            << "途径"      // 2: route
+            << "频次"      // 3: frequency
+            << "天数"      // 4: days
+            << "数量"      // 5: qty
+            << "金额"      // 6: amount(单价*数量 或直接金额)
+            << "备注");    // 7: note
+        tbl_->horizontalHeader()->setStretchLastSection(true);
+        tbl_->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+        tbl_->verticalHeader()->setVisible(false);
+        tbl_->setSelectionBehavior(QAbstractItemView::SelectRows);
+        tbl_->setSelectionMode(QAbstractItemView::SingleSelection);
+        tbl_->setEditTriggers(QAbstractItemView::AllEditTriggers);
 
-QWidget* MedicalOrdersDialog::createNotesSection()
-{
-    QWidget *notesWidget = new QWidget(this);
-    QVBoxLayout *layout = new QVBoxLayout(notesWidget);
-    layout->setSpacing(10);
-    layout->setContentsMargins(0, 15, 0, 0);
+        main->addWidget(tbl_, 1);
 
-    QLabel *notesTitle = new QLabel("医嘱说明:", notesWidget);
-    notesTitle->setObjectName("notesTitle");
-
-    m_notesEdit = new QTextEdit(notesWidget);
-    m_notesEdit->setObjectName("notesText");
-    m_notesEdit->setMaximumHeight(100);
-    m_notesEdit->setReadOnly(true);
-
-    layout->addWidget(notesTitle);
-    layout->addWidget(m_notesEdit);
-
-    return notesWidget;
-}
-
-void MedicalOrdersDialog::loadPatientData(const PatientData &data)
-{
-    if (m_nameLabel) m_nameLabel->setText(data.name);
-    if (m_genderLabel) m_genderLabel->setText("女");
-    if (m_ageLabel) m_ageLabel->setText(QString::number(data.age) + "岁");
-    if (m_patientIdLabel) m_patientIdLabel->setText(data.patientId);
-    if (m_deptLabel) m_deptLabel->setText(data.department);
-    if (m_bedLabel) m_bedLabel->setText("302床");
-    if (m_admitDateLabel) m_admitDateLabel->setText("2025-08-30");
-    if (m_diagnosisLabel) m_diagnosisLabel->setText("高血压, 冠心病");
-}
-
-void MedicalOrdersDialog::setupTableData()
-{
-    if (!m_ordersTable) {
-        qDebug() << "Orders table is null in setupTableData!";
-        return;
+        // 任一可影响金额/合计的编辑变动 → 重算
+        connect(tbl_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *){
+            recalcTotal();
+        });
     }
 
-    // 准备数据
-    QList<QStringList> orderData;
-    orderData << (QStringList() << "2025-08-30" << "10:30" << "1. 内科护理常规 2. 一级护理 3. 低盐低脂饮食 4. 测血压 bid" << "王医生" << "");
-    orderData << (QStringList() << "2025-08-30" << "10:30" << "1. 苯磺酸氨氯地平片 30mg po qd 2. 阿司匹林肠溶片 100mg po qd" << "王医生" << "");
+    // 底栏：合计 + 按钮
+    {
+        auto *bar = new QHBoxLayout();
+        bar->addStretch();
+        lblTotal_   = new QLabel("合计：¥0.00");
+        btnAdd_     = new QPushButton("新增行");
+        btnRemove_  = new QPushButton("删除行");
+        btnRefresh_ = new QPushButton("刷新");
+        btnSave_    = new QPushButton("保存");
+        btnClose_   = new QPushButton("关闭");
 
-    // 设置行数
-    m_ordersTable->setRowCount(orderData.size());
+        bar->addWidget(lblTotal_);
+        bar->addSpacing(16);
+        bar->addWidget(btnAdd_);
+        bar->addWidget(btnRemove_);
+        bar->addSpacing(16);
+        bar->addWidget(btnRefresh_);
+        bar->addWidget(btnSave_);
+        bar->addWidget(btnClose_);
+        main->addLayout(bar);
 
-    // 填充数据 - 使用最简单的方式
-    for (int row = 0; row < orderData.size(); ++row) {
-        const QStringList &rowData = orderData[row];
-        for (int col = 0; col < qMin(rowData.size(), 5); ++col) {
-            QTableWidgetItem *item = new QTableWidgetItem(rowData[col]);
-            // 不设置任何特殊属性，保持默认
-            m_ordersTable->setItem(row, col, item);
-        }
-        // 设置适当的行高
-        m_ordersTable->setRowHeight(row, 50);
-    }
-
-    // 设置医嘱说明
-    if (m_notesEdit) {
-        m_notesEdit->setPlainText("1. 长期医嘱: 有效时间24小时以上，医生注明停止时间后失效\n"
-                                  "2. 临时医嘱: 有效时间在24小时内，只执行一次\n"
-                                  "3. 护士签名: _____________ 核对签名: _____________");
+        connect(btnAdd_,    &QPushButton::clicked, this, &MedicalOrdersDialog::onAddRow);
+        connect(btnRemove_, &QPushButton::clicked, this, &MedicalOrdersDialog::onRemoveRow);
+        connect(btnRefresh_,&QPushButton::clicked, this, &MedicalOrdersDialog::onRefresh);
+        connect(btnSave_,   &QPushButton::clicked, this, &MedicalOrdersDialog::onSave);
+        connect(btnClose_,  &QPushButton::clicked, this, &QDialog::accept);
     }
 }
 
 void MedicalOrdersDialog::applyStyles()
 {
-    // 使用最基本的样式，避免复杂渲染问题
     setStyleSheet(R"(
-        QDialog {
-            background-color: white;
-        }
-        #hospitalTitle {
-            font-size: 24px;
-            font-weight: bold;
-            color: #1a1a1a;
-        }
-        #recordTitle {
-            font-size: 20px;
-            font-weight: 600;
-            color: #333;
-        }
-        #patientInfoFrame {
-            border: 2px solid #333;
-            background-color: #fafafa;
-        }
-        #dataLabel {
-            color: #555;
-            padding: 2px 5px;
-        }
-        #ordersTable {
-            border: 1px solid #333;
-            background-color: white;
-            gridline-color: #333;
-            font-size: 12px;
-        }
-        #notesText {
-            border: 1px solid #333;
-            background-color: #fdfdfd;
-            font-size: 12px;
-            padding: 8px;
-        }
-        #closeButton {
-            background-color: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 8px 16px;
-            font-size: 14px;
-        }
+        QDialog { background: #fff; }
+        #ordersItemsTable { gridline-color:#CBD5E1; }
+        QTableWidget::item:selected { background:#E0F2FE; }
+        QLabel { color:#1f2937; }
+        QPushButton { height:32px; padding:0 12px; }
     )");
+}
+
+void MedicalOrdersDialog::showEvent(QShowEvent *e)
+{
+    QDialog::showEvent(e);
+    // 首次显示即刷新（如果 Main 在构造后立即主动 load 也没问题）
+    emit requestLoadOrders(patientId_, orderId_);
+}
+
+void MedicalOrdersDialog::onRefresh()
+{
+    emit requestLoadOrders(patientId_, orderId_);
+}
+
+void MedicalOrdersDialog::onAddRow()
+{
+    const int r = tbl_->rowCount();
+    tbl_->insertRow(r);
+    for (int c=0; c<tbl_->columnCount(); ++c) {
+        auto *it = new QTableWidgetItem();
+        if (c==4 || c==5) it->setText("0");   // days/qty 缺省 0
+        if (c==6)         it->setText("0.00");// amount 缺省 0
+        tbl_->setItem(r, c, it);
+    }
+}
+
+void MedicalOrdersDialog::onRemoveRow()
+{
+    const int r = tbl_->currentRow();
+    if (r < 0) return;
+    tbl_->removeRow(r);
+    recalcTotal();
+}
+
+void MedicalOrdersDialog::onSave()
+{
+    // 最少要有一行内容
+    if (tbl_->rowCount() == 0) {
+        QMessageBox::warning(this, "提示", "请先新增至少一条医嘱项目。");
+        return;
+    }
+    const auto payload = buildPayload();
+    emit requestSaveOrders(payload);
+}
+
+void MedicalOrdersDialog::onOrdersLoaded(const QJsonObject &orderHeader,
+                                         const QJsonArray  &items,
+                                         bool found)
+{
+    // 标识/标题
+    orderId_ = orderHeader.value("order_id").toInt(orderId_);
+    if (lblOrderId_) lblOrderId_->setText(orderId_>0
+        ? QString("医嘱单：#%1").arg(orderId_)
+        : QString("医嘱单：新建"));
+
+    // 填 header
+    fillHeader(orderHeader);
+
+    // 填 items
+    fillItems(items);
+}
+
+void MedicalOrdersDialog::onOrdersSaved(bool ok, int orderId, const QString &msg)
+{
+    if (!ok) {
+        QMessageBox::warning(this, "保存失败", msg.isEmpty() ? "保存失败" : msg);
+        return;
+    }
+    orderId_ = orderId;
+    if (lblOrderId_) lblOrderId_->setText(QString("医嘱单：#%1").arg(orderId_));
+    QMessageBox::information(this, "已保存", "医嘱已保存。");
+
+    // 保存后刷新一次，确保与服务器对齐
+    emit requestLoadOrders(patientId_, orderId_);
+}
+
+void MedicalOrdersDialog::fillHeader(const QJsonObject &o)
+{
+    // 服务端字段名可能不同，尽量容错
+    const QString dept   = asString(o, "department");
+    const QString doctor = asString(o, "doctor_name");
+    const QString note   = asString(o, "note");
+
+    if (edtDept_)   edtDept_->setText(dept);
+    if (edtDoctor_) edtDoctor_->setText(doctor);
+    if (edtNote_)   edtNote_->setText(note);
+}
+
+void MedicalOrdersDialog::fillItems(const QJsonArray &arr)
+{
+    clearTable();
+    tbl_->setRowCount(arr.size());
+    for (int i=0;i<arr.size();++i) {
+        const QJsonObject it = arr.at(i).toObject();
+        auto get = [&](const char *k){ return it.value(k).toVariant().toString(); };
+
+        auto set = [&](int col, const QString &val){
+            auto *cell = new QTableWidgetItem(val);
+            tbl_->setItem(i, col, cell);
+        };
+        // 尽量兼容不同返回字段名（content/item_name、amount/price等）
+        set(0, get("content").isEmpty()? get("item_name") : get("content"));
+        set(1, get("dose"));
+        set(2, get("route"));
+        set(3, get("frequency"));
+        set(4, get("days"));
+        set(5, get("qty").isEmpty()? get("quantity") : get("qty"));
+
+        // 金额
+        QString amt = get("amount");
+        if (amt.isEmpty()) {
+            const double price = asNumber(it, "price", 0.0);
+            const double qty   = asNumber(it, "qty", asNumber(it,"quantity",0.0));
+            amt = yuan(price * qty);
+        }
+        set(6, amt);
+        set(7, get("note"));
+    }
+    recalcTotal();
+}
+
+void MedicalOrdersDialog::clearTable()
+{
+    tbl_->setRowCount(0);
+}
+
+void MedicalOrdersDialog::recalcTotal()
+{
+    double sum = 0.0;
+    for (int r=0; r<tbl_->rowCount(); ++r) {
+        bool ok=false;
+        const double v = tbl_->item(r,6) ? tbl_->item(r,6)->text().toDouble(&ok) : 0.0;
+        if (ok) sum += v;
+    }
+    if (lblTotal_) lblTotal_->setText(QString("合计：¥%1").arg(yuan(sum)));
+}
+
+QJsonObject MedicalOrdersDialog::buildPayload() const
+{
+    // header
+    QJsonObject order;
+    if (orderId_>0) order.insert("order_id", orderId_);
+    order.insert("patient_id", patientId_);
+    if (!edtDept_->text().trimmed().isEmpty())   order.insert("department",  edtDept_->text().trimmed());
+    if (!edtDoctor_->text().trimmed().isEmpty()) order.insert("doctor_name", edtDoctor_->text().trimmed());
+    if (!edtNote_->text().trimmed().isEmpty())   order.insert("note",        edtNote_->text().trimmed());
+
+    // items
+    QJsonArray items;
+    for (int r=0; r<tbl_->rowCount(); ++r) {
+        auto cell = [&](int c){ return tbl_->item(r,c) ? tbl_->item(r,c)->text().trimmed() : QString(); };
+        QJsonObject it{
+            {"content",   cell(0)},
+            {"dose",      cell(1)},
+            {"route",     cell(2)},
+            {"frequency", cell(3)},
+            {"days",      cell(4)},
+            {"qty",       cell(5)},
+            {"amount",    cell(6)},
+            {"note",      cell(7)}
+        };
+        // 略做校验：内容不能为空
+        if (it.value("content").toString().isEmpty()) continue;
+        items.append(it);
+    }
+    // 最少 1 条
+    if (items.isEmpty()) {
+        QMessageBox::warning(nullptr, "提示", "至少填写一条有效医嘱项目（项目/内容不能为空）。");
+        return {};
+    }
+
+    // 服务器这边的 save_medical_orders 没限定字段名，这里统一放在根
+    // 也可根据你后端习惯改成 {"order":{...},"items":[...]}
+    QJsonObject payload;
+    for (auto it = order.begin(); it != order.end(); ++it) payload.insert(it.key(), it.value());
+    payload.insert("items", items);
+    return payload;
+}
+
+QString MedicalOrdersDialog::asString(const QJsonObject &o, const char *key) {
+    const auto v = o.value(key);
+    return v.isString() ? v.toString() : v.toVariant().toString();
+}
+double MedicalOrdersDialog::asNumber(const QJsonObject &o, const char *key, double def) {
+    const auto v = o.value(key);
+    if (v.isDouble()) return v.toDouble();
+    bool ok=false; const double d=v.toVariant().toString().toDouble(&ok);
+    return ok ? d : def;
 }

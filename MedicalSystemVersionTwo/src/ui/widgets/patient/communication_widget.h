@@ -1,5 +1,7 @@
-#ifndef COMMUNICATION_WIDGET_H
-#define COMMUNICATION_WIDGET_H
+// 文件: src/ui/widgets/patient/communication_widget.h
+
+#ifndef PATIENT_COMMUNICATION_WIDGET_H   // ← 修改宏名
+#define PATIENT_COMMUNICATION_WIDGET_H
 
 #include <QWidget>
 #include <QVBoxLayout>
@@ -12,6 +14,9 @@
 #include <QListWidget>
 #include <QStackedWidget>
 #include <QTimer>
+#include <QMap>        // 确保有这个
+#include <QMouseEvent> // DoctorCardWidget 用到
+#include <QEvent>      // enter/leave 事件用到
 
 struct DoctorContact {
     QString name;
@@ -29,12 +34,13 @@ struct ChatMessage {
     QString senderName;
 };
 
-class DoctorCardWidget : public QFrame
+// —— 为了避免与医生端的 DoctorCardWidget 名字冲突，也一并改名 ——
+// 原: class DoctorCardWidget
+class PatientDoctorCardWidget : public QFrame
 {
-Q_OBJECT
-
+    Q_OBJECT
 public:
-    explicit DoctorCardWidget(const DoctorContact &doctor, QWidget *parent = nullptr);
+    explicit PatientDoctorCardWidget(const DoctorContact &doctor, QWidget *parent = nullptr);
 
 signals:
     void doctorSelected(const QString &doctorName);
@@ -48,15 +54,15 @@ private:
     QString doctorName;
 };
 
-class CommunicationWidget : public QWidget
+// 原: class CommunicationWidget
+class PatientCommunicationWidget : public QWidget
 {
-Q_OBJECT
-
+    Q_OBJECT
 public:
-    explicit CommunicationWidget(QWidget *parent = nullptr);
-    ~CommunicationWidget();
+    explicit PatientCommunicationWidget(QWidget *parent = nullptr);
+    ~PatientCommunicationWidget();
 
-    void resetToStartPage(); // 添加重置方法
+    void resetToStartPage();
 
 signals:
     void backRequested();
@@ -73,7 +79,6 @@ private:
     void loadChatHistory(const QString &doctorName);
     void sendMessage(const QString &message);
 
-    // UI创建函数
     QWidget* createDoctorSelectionPanel();
     QWidget* createChatPanel();
     QWidget* createDoctorCard(const DoctorContact &doctor);
@@ -81,20 +86,20 @@ private:
     QWidget* createInputPanel();
 
 private:
-    QVBoxLayout *doctorListLayout;
-    QScrollArea *chatScrollArea;
-    QVBoxLayout *chatLayout;
-    QTextEdit *messageInput;
-    QPushButton *sendButton;
-    QLabel *currentDoctorLabel;
-    QLabel *doctorStatusLabel;
-    QStackedWidget *mainStack;
-    QWidget *doctorSelectionPage;
-    QWidget *chatPage;
+    QVBoxLayout *doctorListLayout = nullptr;
+    QScrollArea *chatScrollArea = nullptr;
+    QVBoxLayout *chatLayout = nullptr;
+    QTextEdit *messageInput = nullptr;
+    QPushButton *sendButton = nullptr;
+    QLabel *currentDoctorLabel = nullptr;
+    QLabel *doctorStatusLabel = nullptr;
+    QStackedWidget *mainStack = nullptr;
+    QWidget *doctorSelectionPage = nullptr;
+    QWidget *chatPage = nullptr;
 
     QString currentDoctor;
     QMap<QString, QList<ChatMessage>> chatHistory;
-    QTimer *timeUpdateTimer;
+    QTimer *timeUpdateTimer = nullptr;
 };
 
-#endif // COMMUNICATION_WIDGET_H
+#endif // PATIENT_COMMUNICATION_WIDGET_H

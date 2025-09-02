@@ -24,6 +24,7 @@ add_executable(${PROJECT_NAME}
     main.cpp
     src/ui/widgets/widget.cpp
     src/ui/widgets/common/login_dialog.cpp
+    src/ui/widgets/common/shared_data_types.h
     src/ui/widgets/patient/patient_main_window.cpp
     src/ui/widgets/patient/profile_widget.cpp
     src/ui/widgets/doctor/doctor_main_window.cpp
@@ -36,6 +37,7 @@ add_executable(${PROJECT_NAME}
     src/ui/widgets/patient/payment_success_dialog.cpp
     src/ui/widgets/patient/online_payment_widget.cpp
 
+    src/ui/widgets/doctor/medical_orders_dialog.h
     src/ui/widgets/doctor/doctor_profile_widget.cpp
     src/ui/widgets/doctor/leave_record_item_widget.cpp
     src/ui/widgets/doctor/attendance_widget.cpp
@@ -73,13 +75,17 @@ add_executable(${PROJECT_NAME}
     src/ui/widgets/doctor/patient_list_item_widget.h
     src/ui/widgets/doctor/prescription_widget.h
     src/ui/widgets/doctor/medical_record_dialog.h
-    src/ui/widgets/doctor/medical_orders_dialog.h
+    src/ui/widgets/doctor/doctor_communication_widget.h
+    src/ui/widgets/doctor/doctor_communication_widget.cpp
+    src/ui/widgets/doctor/patient_data_types.h
 
     src/ui/widgets/patient/medical_orders_widget.h
     src/ui/widgets/patient/hospitalization_info_widget.h
     src/ui/widgets/patient/medical_record_widget.h
     src/ui/widgets/patient/long_term_orders_widget.h
     src/ui/widgets/patient/eprescription_widget.h
+    src/ui/widgets/patient/doctor_card_widget.h
+    src/ui/widgets/patient/doctor_card_widget.cpp
 )
 
 

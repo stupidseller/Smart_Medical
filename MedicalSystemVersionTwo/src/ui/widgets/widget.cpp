@@ -165,6 +165,29 @@ void Widget::loadMedicineData()
         {"type", "load_medicine_data"}
     });
 }
+void Widget::loadDoctorContactsForPatient(int patientId) {
+    sendJson({{"type","doctorContactsLoaded"}, {"patient_id", patientId}});
+}
+void Widget::loadDoctorContactsForDoctor(int doctorId) {
+    sendJson({{"type","doctorContactsLoaded"}, {"doctor_id", doctorId}});
+}
+
+void Widget::loadChatHistoryByConversation(int conversationId, int limit) {
+    sendJson({{"type","chatHistoryLoaded"}, {"conversation_id", conversationId}, {"limit", limit}});
+}
+void Widget::loadChatHistoryByPeer(int patientId, int doctorId, int limit) {
+    sendJson({{"type","chatHistoryLoaded"}, {"patient_id", patientId}, {"doctor_id", doctorId}, {"limit", limit}});
+}
+
+void Widget::sendChatMessageByConversation(int conversationId, const QString &senderType, const QString &content) {
+    sendJson({{"type","messageSent"}, {"conversation_id", conversationId}, {"sender_type", senderType}, {"content", content}});
+}
+void Widget::sendChatMessageByPeer(int patientId, int doctorId, const QString &senderType, const QString &content) {
+    sendJson({{"type","messageSent"}, {"patient_id", patientId}, {"doctor_id", doctorId}, {"sender_type", senderType}, {"content", content}});
+}
+
+
+
 void Widget::loadOrderDetails(int orderId)
 {
     Q_UNUSED(orderId);
@@ -233,7 +256,39 @@ void Widget::sendUpdateDoctorProfile(const QJsonObject &patch) {
     obj.insert("type","update_doctor_profile");
     sendJson(obj);
 }
-
+// aaaa
+void Widget::loadPatientList() {
+    sendJson({{"type","load_patient_list"}});
+}
+void Widget::loadMedicalRecord(int patientId) {
+    sendJson({{"type","load_medical_record"}, {"patient_id", patientId}});
+}
+void Widget::saveMedicalRecord(const QJsonObject &rec) {
+    QJsonObject obj = rec; obj.insert("type","save_medical_record"); sendJson(obj);
+}
+void Widget::loadMedicalOrders(int patientId, int orderId) {
+    QJsonObject obj{{"type","load_medical_orders"},{"patient_id",patientId}};
+    if (orderId>0) obj.insert("order_id", orderId);
+    sendJson(obj);
+}
+void Widget::saveMedicalOrders(const QJsonObject &order) {
+    QJsonObject obj = order; obj.insert("type","save_medical_orders"); sendJson(obj);
+}
+void Widget::loadAttendanceToday(int doctorId) {
+    sendJson({{"type","load_attendance_today"},{"doctor_id",doctorId}});
+}
+void Widget::clockEvent(int doctorId, const QString &kind) {
+    sendJson({{"type","clock_event"},{"doctor_id",doctorId},{"kind",kind}});
+}
+void Widget::submitLeave(int doctorId, const QString &leaveType,
+                         const QString &startDate, const QString &endDate, const QString &reason) {
+    sendJson({{"type","submit_leave"},{"doctor_id",doctorId},{"leave_type",leaveType},
+              {"start_date",startDate},{"end_date",endDate},{"reason",reason}});
+}
+void Widget::loadLeaveRecords(int doctorId) {
+    sendJson({{"type","load_leave_records"},{"doctor_id",doctorId}});
+}
+// aaaa
 // xia mian zhi yunxu xiugai slotReadyRead
 // xiamian zhege if elseif
 void Widget::slotReadyRead()
@@ -264,7 +319,27 @@ void Widget::slotReadyRead()
                 emit loginSucceededDetail(id, name, role);
             } else emit loginFailed(msg.isEmpty()?"登录失败":msg);
 
-        }  else if (type=="patient_profile_result") {
+        }  else if (type == "doctorContactsLoaded") {
+            const bool ok = obj.value("success").toBool();
+            if (ok) emit doctorContactsLoadedOk(obj.value("contacts").toArray(),
+                                                obj.value("side").toString());
+            else    emit doctorContactsLoadedFailed(obj.value("error").toString());
+            continue;
+
+        } else if (type == "chatHistoryLoaded") {
+            const bool ok = obj.value("success").toBool();
+            if (ok) emit chatHistoryLoadedOk(obj.value("messages").toArray(),
+                                             obj.value("conversation_id").toInt());
+            else    emit chatHistoryLoadedFailed(obj.value("error").toString());
+            continue;
+
+        } else if (type == "messageSent") {
+            const bool ok = obj.value("success").toBool();
+            if (ok) emit messageSentOk(obj.value("message").toObject(),
+                                       obj.value("conversation_id").toInt());
+            else    emit messageSentFailed(obj.value("error").toString());
+            continue;
+        } else if (type=="patient_profile_result") {
             emit patientProfileLoaded(obj.value("profile").toObject());
 
         } else if (type == "processPayment") {
@@ -328,6 +403,53 @@ void Widget::slotReadyRead()
             }
             const QJsonArray arr = obj.value("medicines").toArray();
             emit loadMedicineDataOk(arr);
+            continue;
+        } else if (type == "load_patient_list") {
+            const bool ok = obj.value("success").toBool();
+            if (ok) emit loadPatientListOk(obj.value("patients").toArray());
+            else    emit loadPatientListFailed(obj.value("error").toString());
+            continue;
+
+        } else if (type == "load_medical_record") {
+            const bool ok = obj.value("success").toBool();
+            if (ok) emit medicalRecordLoaded(obj.value("record").toObject(),
+                                             obj.value("found").toBool());
+            continue;
+
+        } else if (type == "save_medical_record") {
+            const bool ok = obj.value("success").toBool();
+            emit medicalRecordSaved(ok, obj.value("record_id").toInt(),
+                                    ok ? "已保存" : obj.value("error").toString());
+            continue;
+
+        } else if (type == "load_medical_orders") {
+            const bool ok = obj.value("success").toBool();
+            if (ok) emit medicalOrdersLoaded(obj.value("order").toObject(),
+                                             obj.value("items").toArray(),
+                                             obj.value("found").toBool());
+            continue;
+
+        } else if (type == "save_medical_orders") {
+            const bool ok = obj.value("success").toBool();
+            emit medicalOrdersSaved(ok, obj.value("order_id").toInt(),
+                                    ok ? "已保存" : obj.value("error").toString());
+            continue;
+
+        } else if (type == "load_attendance_today") {
+            emit attendanceTodayLoaded(obj);
+            continue;
+
+        } else if (type == "clock_event") {
+            emit clockEventDone(obj);
+            continue;
+
+        } else if (type == "submit_leave") {
+            emit leaveSubmitted(obj);
+            continue;
+
+        } else if (type == "load_leave_records") {
+            const bool ok = obj.value("success").toBool();
+            if (ok) emit leaveRecordsLoaded(obj.value("records").toArray());
             continue;
         } else {
             qDebug() << "unknown msg type:" << type << obj;

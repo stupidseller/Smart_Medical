@@ -3,13 +3,16 @@
 
 #include <QFrame>
 #include "../common/shared_data_types.h"
+#include <QFontInfo>
+
 
 class DoctorCardWidget : public QFrame
 {
 Q_OBJECT
 
 public:
-    explicit DoctorCardWidget(const DoctorInfo &info, QWidget *parent = nullptr);
+//    explicit DoctorCardWidget(const DoctorInfo &info, QWidget *parent = nullptr);
+    explicit DoctorCardWidget(const SharedTypes::DoctorInfo &info, QWidget *parent = nullptr);
     QString doctorId() const;
 
 signals:

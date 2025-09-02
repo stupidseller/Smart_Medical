@@ -5,6 +5,7 @@
 #include "communication_widget.h"
 #include "health_assessment_widget.h"
 #include "medicine_search_widget.h"
+#include "communication_widget.h"
 #include "online_payment_widget.h"
 #include "widget.h"
 #include <QVBoxLayout>
@@ -323,8 +324,8 @@ void PatientMainWindow::showDoctorInfoWidget() {
 
 void PatientMainWindow::showCommunicationWidget() {
     if (!communicationPage) {
-        communicationPage = new CommunicationWidget();
-        connect(communicationPage, &CommunicationWidget::backRequested, this, [=](){
+        communicationPage = new PatientCommunicationWidget();
+        connect(communicationPage, &PatientCommunicationWidget::backRequested, this, [=](){
             mainStackedWidget->setCurrentWidget(dashboardPage);
         });
         mainStackedWidget->addWidget(communicationPage);

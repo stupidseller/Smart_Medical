@@ -16,7 +16,7 @@
 #include <QMouseEvent>
 
 // DoctorCardWidget实现
-DoctorCardWidget::DoctorCardWidget(const DoctorContact &doctor, QWidget *parent)
+PatientDoctorCardWidget::PatientDoctorCardWidget(const DoctorContact &doctor, QWidget *parent)
         : QFrame(parent), doctorName(doctor.name)
 {
     setObjectName("doctorCard");
@@ -49,7 +49,7 @@ DoctorCardWidget::DoctorCardWidget(const DoctorContact &doctor, QWidget *parent)
     layout->addStretch();
 }
 
-void DoctorCardWidget::mousePressEvent(QMouseEvent *event)
+void PatientDoctorCardWidget::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
         emit doctorSelected(doctorName);
@@ -57,25 +57,25 @@ void DoctorCardWidget::mousePressEvent(QMouseEvent *event)
     QFrame::mousePressEvent(event);
 }
 
-void DoctorCardWidget::enterEvent(QEvent *event)
+void PatientDoctorCardWidget::enterEvent(QEvent *event)
 {
     setStyleSheet("QFrame#doctorCard { border-color: #3182CE; background-color: #F7FAFC; }");
     QFrame::enterEvent(event);
 }
 
-void DoctorCardWidget::leaveEvent(QEvent *event)
+void PatientDoctorCardWidget::leaveEvent(QEvent *event)
 {
     setStyleSheet("");
     QFrame::leaveEvent(event);
 }
 
-CommunicationWidget::CommunicationWidget(QWidget *parent)
+PatientCommunicationWidget::PatientCommunicationWidget(QWidget *parent)
         : QWidget(parent), doctorListLayout(nullptr), chatScrollArea(nullptr),
           chatLayout(nullptr), messageInput(nullptr), sendButton(nullptr),
           currentDoctorLabel(nullptr), doctorStatusLabel(nullptr),
           mainStack(nullptr), doctorSelectionPage(nullptr), chatPage(nullptr)
 {
-    setObjectName("CommunicationWidget");
+    setObjectName("PatientCommunicationWidget");
     initUI();
     initStyleSheets();
     loadDoctorList();
@@ -86,13 +86,13 @@ CommunicationWidget::CommunicationWidget(QWidget *parent)
     };
 
     timeUpdateTimer = new QTimer(this);
-    connect(timeUpdateTimer, &QTimer::timeout, this, &CommunicationWidget::updateMessageTime);
+    connect(timeUpdateTimer, &QTimer::timeout, this, &PatientCommunicationWidget::updateMessageTime);
     timeUpdateTimer->start(60000); // 每分钟更新一次
 }
 
-CommunicationWidget::~CommunicationWidget() {}
+PatientCommunicationWidget::~PatientCommunicationWidget() {}
 
-void CommunicationWidget::initUI() {
+void PatientCommunicationWidget::initUI() {
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
@@ -105,7 +105,7 @@ void CommunicationWidget::initUI() {
 
     QPushButton *backButton = new QPushButton("← 返回首页");
     backButton->setObjectName("backButton");
-    connect(backButton, &QPushButton::clicked, this, &CommunicationWidget::backRequested);
+    connect(backButton, &QPushButton::clicked, this, &PatientCommunicationWidget::backRequested);
 
     QLabel *title = new QLabel("医患沟通");
     title->setObjectName("pageTitle");
@@ -139,7 +139,7 @@ void CommunicationWidget::initUI() {
     currentDoctor.clear(); // 确保每次进入都重置当前医生
 }
 
-QWidget* CommunicationWidget::createDoctorSelectionPanel() {
+QWidget* PatientCommunicationWidget::createDoctorSelectionPanel() {
     QWidget *panel = new QWidget();
     panel->setObjectName("doctorSelectionPanel");
 
@@ -169,7 +169,7 @@ QWidget* CommunicationWidget::createDoctorSelectionPanel() {
     return panel;
 }
 
-QWidget* CommunicationWidget::createChatPanel() {
+QWidget* PatientCommunicationWidget::createChatPanel() {
     QWidget *panel = new QWidget();
     panel->setObjectName("chatPanel");
 
@@ -242,7 +242,7 @@ QWidget* CommunicationWidget::createChatPanel() {
     return panel;
 }
 
-QWidget* CommunicationWidget::createInputPanel() {
+QWidget* PatientCommunicationWidget::createInputPanel() {
     QWidget *inputPanel = new QWidget();
     inputPanel->setObjectName("inputPanel");
 
@@ -258,7 +258,7 @@ QWidget* CommunicationWidget::createInputPanel() {
     sendButton = new QPushButton("📨");
     sendButton->setObjectName("sendButton");
     sendButton->setFixedSize(50, 50);
-    connect(sendButton, &QPushButton::clicked, this, &CommunicationWidget::onSendMessage);
+    connect(sendButton, &QPushButton::clicked, this, &PatientCommunicationWidget::onSendMessage);
 
     layout->addWidget(messageInput);
     layout->addWidget(sendButton);
@@ -266,16 +266,16 @@ QWidget* CommunicationWidget::createInputPanel() {
     return inputPanel;
 }
 
-QWidget* CommunicationWidget::createDoctorCard(const DoctorContact &doctor) {
-    DoctorCardWidget *card = new DoctorCardWidget(doctor, this);
+QWidget* PatientCommunicationWidget::createDoctorCard(const DoctorContact &doctor) {
+    PatientDoctorCardWidget *card = new PatientDoctorCardWidget(doctor, this);
 
     // 连接信号
-    connect(card, &DoctorCardWidget::doctorSelected, this, &CommunicationWidget::onDoctorSelected);
+    connect(card, &PatientDoctorCardWidget::doctorSelected, this, &PatientCommunicationWidget::onDoctorSelected);
 
     return card;
 }
 
-QWidget* CommunicationWidget::createMessageWidget(const ChatMessage &message) {
+QWidget* PatientCommunicationWidget::createMessageWidget(const ChatMessage &message) {
     QWidget *messageWidget = new QWidget();
     QHBoxLayout *mainLayout = new QHBoxLayout(messageWidget);
     mainLayout->setContentsMargins(0, 5, 0, 5);
@@ -326,7 +326,7 @@ QWidget* CommunicationWidget::createMessageWidget(const ChatMessage &message) {
     return messageWidget;
 }
 
-void CommunicationWidget::loadDoctorList() {
+void PatientCommunicationWidget::loadDoctorList() {
     if (!doctorListLayout) return;
 
     // 医生数据
@@ -344,7 +344,7 @@ void CommunicationWidget::loadDoctorList() {
     doctorListLayout->addStretch();
 }
 
-void CommunicationWidget::onDoctorSelected(const QString &doctorName) {
+void PatientCommunicationWidget::onDoctorSelected(const QString &doctorName) {
     currentDoctor = doctorName;
 
     // 更新医生信息
@@ -371,7 +371,7 @@ void CommunicationWidget::onDoctorSelected(const QString &doctorName) {
     mainStack->setCurrentWidget(chatPage);
 }
 
-void CommunicationWidget::loadChatHistory(const QString &doctorName) {
+void PatientCommunicationWidget::loadChatHistory(const QString &doctorName) {
     if (!chatLayout) return;
 
     // 清空现有消息
@@ -403,7 +403,7 @@ void CommunicationWidget::loadChatHistory(const QString &doctorName) {
     });
 }
 
-void CommunicationWidget::onSendMessage() {
+void PatientCommunicationWidget::onSendMessage() {
     if (!messageInput || messageInput->toPlainText().trimmed().isEmpty()) {
         return;
     }
@@ -413,7 +413,7 @@ void CommunicationWidget::onSendMessage() {
     messageInput->clear();
 }
 
-void CommunicationWidget::sendMessage(const QString &message) {
+void PatientCommunicationWidget::sendMessage(const QString &message) {
     if (currentDoctor.isEmpty()) return;
 
     // 添加患者消息
@@ -448,19 +448,19 @@ void CommunicationWidget::sendMessage(const QString &message) {
     });
 }
 
-void CommunicationWidget::updateMessageTime() {
+void PatientCommunicationWidget::updateMessageTime() {
     // 可以在这里更新消息时间显示
 }
 
-void CommunicationWidget::resetToStartPage() {
+void PatientCommunicationWidget::resetToStartPage() {
     // 重置到医生选择页面
     currentDoctor.clear();
     mainStack->setCurrentWidget(doctorSelectionPage);
 }
 
-void CommunicationWidget::initStyleSheets() {
+void PatientCommunicationWidget::initStyleSheets() {
     this->setStyleSheet(R"(
-        #CommunicationWidget {
+        #PatientCommunicationWidget {
             background-color: #F0F4F8;
         }
 

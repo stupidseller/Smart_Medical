@@ -4,13 +4,13 @@
 #include <QLabel>
 #include <QSvgWidget>
 #include <QMouseEvent>
-
+#include <QFontInfo>
 // SVG Icon (可以考虑也放入一个公共文件中)
 static const char* userIconSvg = R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="#409EFF" stroke="white" stroke-width="1.5"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>)";
 
-DoctorCardWidget::DoctorCardWidget(const DoctorInfo &info, QWidget *parent)
-        : QFrame(parent), m_doctorId(info.id)
-{
+DoctorCardWidget::DoctorCardWidget(const SharedTypes::DoctorInfo &info, QWidget *parent)
+         : QFrame(parent), m_doctorId(info.id)
+ {
     setObjectName("doctorCard");
     setCursor(Qt::PointingHandCursor);
 

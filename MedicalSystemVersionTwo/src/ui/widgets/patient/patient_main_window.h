@@ -31,7 +31,7 @@ class Widget;
 class ProfileWidget;
 class AppointmentBookingWidget;
 class DoctorInfoWidget;
-class CommunicationWidget;
+class PatientCommunicationWidget;
 class HealthAssessmentWidget;
 class MedicineSearchWidget;
 class OnlinePaymentWidget;
@@ -85,7 +85,7 @@ private:
     ProfileWidget *profilePage = nullptr;
     AppointmentBookingWidget *appointmentPage = nullptr;
     DoctorInfoWidget *doctorInfoPage = nullptr;
-    CommunicationWidget *communicationPage = nullptr;
+    PatientCommunicationWidget *communicationPage = nullptr;
     HealthAssessmentWidget *healthAssessmentPage = nullptr;
     MedicineSearchWidget *medicineSearchPage = nullptr;
     OnlinePaymentWidget *paymentPage = nullptr;

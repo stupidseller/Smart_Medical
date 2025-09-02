@@ -14,6 +14,11 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QNetworkInterface>
+#include <QDate>
+#include <QTime>
+#include <QDateTime>
+#include <algorithm>   // 你用了 std::max
+#include <QVariant>    // 你用到了 QVariant(...) 绑定可空值（可选，但建议）
 
 const int MAXLINK = 99;//最大连接数
 
@@ -260,1381 +265,2126 @@ void Widget::handleMessage(QTcpSocket *sock, const QJsonObject &obj)
         handlecurrentDataDoctor(sock, obj);
     } else if (type == "update_doctor_profile") {
         handleUpdateDoctorProfile(sock, obj);
+    } else if (type == "doctorContactsLoaded") {        // 注意：不要有尾部空格！
+        handledoctorContactsLoaded(sock, obj);
+    } else if (type == "chatHistoryLoaded") {
+        handlechatHistoryLoaded(sock, obj);
+    } else if (type == "messageSent") {
+        handlemessageSent(sock, obj);
+    } else if (type == "load_patient_list") {
+        handleLoadPatientList(sock, obj);
+    } else if (type == "load_medical_record") {
+        handleLoadMedicalRecord(sock, obj);
+    } else if (type == "save_medical_record") {
+        handleSaveMedicalRecord(sock, obj);
+    } else if (type == "load_medical_orders") {
+        handleLoadMedicalOrders(sock, obj);
+    } else if (type == "save_medical_orders") {
+        handleSaveMedicalOrders(sock, obj);
+    } else if (type == "load_attendance_today") {
+        handleLoadAttendanceToday(sock, obj);
+    } else if (type == "clock_event") {
+        handleClockEvent(sock, obj);
+    } else if (type == "submit_leave") {
+        handleSubmitLeave(sock, obj);
+    } else if (type == "load_leave_records") {
+        handleLoadLeaveRecords(sock, obj);
     } else {
         qDebug() << "unknown type:" << type << obj;
         sendError(sock, "error", QString("unknown type: %1").arg(type));
     }
 }
-// shang mian keyi jia, if / else if
-// widget.cpp  (服务器)
-void Widget::handlecurrentDataDoctor(QTcpSocket *sock, const QJsonObject &obj)
+// weiji //
+void Widget::handleLoadPatientList(QTcpSocket *sock, const QJsonObject &obj)
 {
+    Q_UNUSED(obj);
     QSqlDatabase db = QSqlDatabase::database();
-    if (!db.isValid() || !db.isOpen()) {
-        sendError(sock, "currentDataDoctor", "database not open");
-        return;
-    }
+    if (!db.isValid() || !db.isOpen()) { sendError(sock,"load_patient_list","database not open"); return; }
 
-    const int accountId = obj.value("account_id").toInt(-1);
-    const int doctorId  = obj.value("doctor_id").toInt(-1);
+    // 优先视图：假设含 patient_id, name, age, department, is_inpatient, is_medical_insurance, is_key_focus
+    const char *SQL_V = R"SQL(
+                        SELECT patient_id, name,
+                        CAST(
+                        strftime('%Y','now') - strftime('%Y', COALESCE(birth_date,'1970-01-01'))
+                        AS INTEGER
+                        ) AS age,
+                        COALESCE(department,'') AS department,
+                        COALESCE(is_inpatient,0) AS is_inpatient,
+                        COALESCE(is_medical_insurance,0) AS is_medical_insurance,
+                        COALESCE(is_key_focus,0) AS is_key_focus
+                        FROM v_patient_profile
+                        ORDER BY name ASC
+                        )SQL";
+
+    const char *SQL_FALLBACK = R"SQL(
+                               SELECT patient_id, name,
+                               CAST(
+                               strftime('%Y','now') - strftime('%Y', COALESCE(birth_date,'1970-01-01'))
+                               AS INTEGER
+                               ) AS age,
+                               '' AS department,
+                               0  AS is_inpatient,
+                               0  AS is_medical_insurance,
+                               0  AS is_key_focus
+                               FROM patients
+                               ORDER BY name ASC
+                               )SQL";
 
     QSqlQuery q(db);
-    if (accountId > 0) {
-        // 通过账户查医生
-        static const char *SQL_BY_ACCOUNT = R"SQL(
-            SELECT a.account_id, a.username, a.role, a.is_active,
-                   d.doctor_id, d.name, d.title, d.department_id,
-                   dep.name AS department_name,
-                   COALESCE(d.specialty,'')      AS specialty,
-                   COALESCE(d.experience,'')     AS experience,
-                   d.consultation_fee,
-                   d.is_online
-            FROM accounts a
-            JOIN doctors d       ON d.doctor_id       = a.doctor_id
-            LEFT JOIN departments dep ON dep.department_id = d.department_id
-            WHERE a.account_id = :aid AND a.role = 'doctor'
-            LIMIT 1
-        )SQL";
-        if (!q.prepare(SQL_BY_ACCOUNT)) { sendError(sock,"currentDataDoctor","prepare failed"); return; }
-        q.bindValue(":aid", accountId);
-    } else if (doctorId > 0) {
-        // 直接按医生ID查
-        static const char *SQL_BY_DOCTOR = R"SQL(
-            SELECT NULL AS account_id, NULL AS username, 'doctor' AS role, 1 AS is_active,
-                   d.doctor_id, d.name, d.title, d.department_id,
-                   dep.name AS department_name,
-                   COALESCE(d.specialty,'')      AS specialty,
-                   COALESCE(d.experience,'')     AS experience,
-                   d.consultation_fee,
-                   d.is_online
-            FROM doctors d
-            LEFT JOIN departments dep ON dep.department_id = d.department_id
-            WHERE d.doctor_id = :did
-            LIMIT 1
-        )SQL";
-        if (!q.prepare(SQL_BY_DOCTOR)) { sendError(sock,"currentDataDoctor","prepare failed"); return; }
-        q.bindValue(":did", doctorId);
-    } else {
-        sendError(sock, "currentDataDoctor", "missing account_id or doctor_id");
-        return;
-    }
-
-    if (!q.exec()) { sendError(sock,"currentDataDoctor", q.lastError().text()); return; }
-    if (!q.next()) { sendError(sock,"currentDataDoctor","not found"); return; }
-
-    QJsonObject doctor{
-        {"account_id",       q.value("account_id").isNull() ? QJsonValue() : QJsonValue(q.value("account_id").toInt())},
-        {"username",         q.value("username").toString()},
-        {"role",             q.value("role").toString()},
-        {"is_active",        q.value("is_active").toInt()!=0},
-
-        {"doctor_id",        q.value("doctor_id").toInt()},
-        {"name",             q.value("name").toString()},
-        {"title",            q.value("title").toString()},
-        {"department_id",    q.value("department_id").toInt()},
-        {"department",       q.value("department_name").toString()},
-        {"specialty",        q.value("specialty").toString()},
-        {"experience",       q.value("experience").toString()},
-        {"consultation_fee", q.value("consultation_fee").toDouble()},
-        {"is_online",        q.value("is_online").toInt()!=0}
-    };
-
-    sendJson(sock, QJsonObject{
-        {"type",    "currentDataDoctor"},
-        {"success", true},
-        {"doctor",  doctor}
-    });
-}
-void Widget::handleUpdateDoctorProfile(QTcpSocket *sock, const QJsonObject &obj)
-    {
-        const int did = obj.value("doctor_id").toInt(-1);
-        if (did <= 0) { sendError(sock,"update_doctor_profile","missing doctor_id"); return; }
-
-        // 允许更新的字段
-        // 注意：title 受 CHECK 约束；is_online 只能 0/1；fee >= 0
-        const QMap<QString, QString> allow {
-            {"title",            "title"},            // 主任医师/副主任医师/主治医师/住院医师/医师
-            {"department_id",    "department_id"},
-            {"specialty",        "specialty"},
-            {"experience",       "experience"},
-            {"consultation_fee", "consultation_fee"},
-            {"is_online",        "is_online"}
-        };
-
-        QStringList sets;
-        QMap<QString,QVariant> binds;
-
-        auto titleOk = [](const QString &t){
-            static const QStringList k = {"主任医师","副主任医师","主治医师","住院医师","医师"};
-            return k.contains(t);
-        };
-
-        for (auto it = allow.constBegin(); it != allow.constEnd(); ++it) {
-            const QString k = it.key();
-            if (!obj.contains(k)) continue;
-
-            if (k=="title") {
-                const QString t = obj.value(k).toString().trimmed();
-                if (!titleOk(t)) continue;
-                binds[":"+k] = t;
-            } else if (k=="is_online") {
-                const int v = obj.value(k).toInt(0);
-                binds[":"+k] = (v?1:0);
-            } else if (k=="consultation_fee") {
-                double fee = obj.value(k).toDouble(-1.0);
-                if (fee < 0.0) fee = 0.0;
-                binds[":"+k] = fee;
-            } else if (k=="department_id") {
-                const int dep = obj.value(k).toInt(-1);
-                if (dep <= 0) continue;
-                binds[":"+k] = dep;
-            } else {
-                binds[":"+k] = obj.value(k).toVariant();
-            }
-            sets << QString("%1=:%2").arg(it.value(), k);
+    if (!q.prepare(SQL_V) || !q.exec()) { // 视图不存在则回退
+        q.clear();
+        if (!q.prepare(SQL_FALLBACK) || !q.exec()) {
+            sendError(sock,"load_patient_list", q.lastError().text());
+            return;
         }
-
-        if (sets.isEmpty()) { sendError(sock,"update_doctor_profile","no valid fields"); return; }
-
-        QSqlDatabase db = QSqlDatabase::database();
-        if (!db.isOpen()) { sendError(sock,"update_doctor_profile","database not open"); return; }
-        if (!db.transaction()) qWarning() << "[update_doctor_profile] begin tx failed";
-
-        QSqlQuery q(db);
-        const QString sql = "UPDATE doctors SET " + sets.join(", ") + " WHERE doctor_id=:id";
-        if (!q.prepare(sql)) { db.rollback(); sendError(sock,"update_doctor_profile","prepare failed"); return; }
-        for (auto it = binds.constBegin(); it != binds.constEnd(); ++it) q.bindValue(it.key(), it.value());
-        q.bindValue(":id", did);
-
-        if (!q.exec()) { db.rollback(); sendError(sock,"update_doctor_profile", q.lastError().text()); return; }
-        if (!db.commit()) { db.rollback(); sendError(sock,"update_doctor_profile","commit failed"); return; }
-
-        sendJson(sock, QJsonObject{
-            {"type","update_doctor_profile"},
-            {"success", true},
-            {"message","已保存"}
-        });
-    }
-void Widget::handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj)
-{
-
-    QSqlDatabase db = QSqlDatabase::database();
-    if (!db.isValid() || !db.isOpen()) {
-        qWarning() << "[load_medicine_data] database not open";
-        sendJson(sock, {
-            {"type", "load_medicine_data_ok"},
-            {"success", false},
-            {"error",  "database not open"}
-        });
-        return;
-    }
-
-    // 只查 UI 需要的列（与前端字段对齐）
-    static const char *kSql = R"SQL(
-        SELECT
-            medicine_id,
-            name,
-            description,
-            type,
-            is_prescription,
-            price,
-            specifications,
-            manufacturer,
-            effects,
-            dosage,
-            icon_color
-        FROM medicines
-        ORDER BY name ASC
-    )SQL";
-
-    QSqlQuery q(db);
-    if (!q.prepare(kSql)) {
-        const QString err = q.lastError().text();
-        qWarning() << "[load_medicine_data] prepare failed:" << err;
-        sendJson(sock, {
-            {"type", "load_medicine_data_ok"},
-            {"success", false},
-            {"error",  QString("prepare failed: %1").arg(err)}
-        });
-        return;
-    }
-
-    if (!q.exec()) {
-        const QString err = q.lastError().text();
-        qWarning() << "[load_medicine_data] exec failed:" << err;
-        sendJson(sock, {
-            {"type", "load_medicine_data_ok"},
-            {"success", false},
-            {"error",  QString("exec failed: %1").arg(err)}
-        });
-        return;
     }
 
     QJsonArray arr;
-    // arr.reserve(q.size() > 0 ? q.size() : 16);
-
     while (q.next()) {
-        // 注意：不要用变量名"type"遮蔽 JSON 的 key，这里用 drugType
-        const int     mid          = q.value("medicine_id").toInt();
-        const QString name         = q.value("name").toString();
-        const QString description  = q.value("description").toString();
-        const QString drugType     = q.value("type").toString();
-        const bool    isPrescription = q.value("is_prescription").toInt() != 0;
-        const double  price        = q.value("price").toDouble();
-        const QString specs        = q.value("specifications").toString();
-        const QString manufacturer = q.value("manufacturer").toString();
-        const QString effects      = q.value("effects").toString();
-        const QString dosage       = q.value("dosage").toString();
-        const QString iconColor    = q.value("icon_color").toString();
-
-        QJsonObject item{
-            {"medicine_id",    mid},                // ✅ 新增这个
-            {"name",           name},
-            {"description",    description},
-            {"type",           drugType},
-            {"is_prescription",isPrescription},
-            {"price",          price},
-            {"specifications", specs},
-            {"manufacturer",   manufacturer},
-            {"effects",        effects},
-            {"dosage",         dosage},
-            {"icon_color",     iconColor}
-        };
-        arr.append(item);
-
-        qDebug().noquote() << QString("药品: %1 | 类型: %2 | 处方: %3 | 价格: %4 | 规格: %5")
-                              .arg(name, drugType, isPrescription ? "是" : "否")
-                              .arg(price)
-                              .arg(specs);
-    }
-
-    QJsonObject resp{
-        {"type",     "load_medicine_data_ok"},
-        {"success",  true},
-        {"count",    static_cast<int>(arr.size())},
-        {"medicines", arr}
-    };
-    sendJson(sock, resp);
-}
-
-void Widget::handleLoadOrderDetails(QTcpSocket *sock, const QJsonObject &obj)
-{
-    QSqlDatabase db = QSqlDatabase::database();
-    if (!db.isValid() || !db.isOpen()) {
-        qWarning() << "[loadOrderDetails] database not open";
-        sendJson(sock, {
-            {"type", "loadOrderDetails"},
-            {"success", false},
-            {"error",  "database not open"}
-        });
-        return;
-    }
-
-    // 可选：按订单号筛选；如果 obj 里带了 "order_id"（int），就按该订单查单条
-    const bool hasFilter = obj.contains("order_id");
-    const int  orderId   = obj.value("order_id").toInt(); // 不带就为 0，不影响
-
-    // 只查 UI 需要的列（与你 UI 字段一一对应）
-    // 备注：%1 位置拼接 WHERE 子句
-    static const char *kSqlTmpl = R"SQL(
-SELECT
-  o.order_id,
-  ('PO' || strftime('%Y%m%d', o.created_at) || printf('%06d', o.order_id)) AS order_code,
-  o.created_at                  AS create_time,
-  p.name                        AS patient_name,
-  dep.name                      AS department,
-  d.name                        AS doctor_name,
-  COALESCE(SUM(CASE WHEN oi.item_name = '挂号费'    THEN oi.amount END), 0) AS fee_reg,
-  COALESCE(SUM(CASE WHEN oi.item_name = '诊查费'    THEN oi.amount END), 0) AS fee_consult,
-  COALESCE(SUM(CASE WHEN oi.item_name LIKE '药品-%' THEN oi.amount END), 0) AS fee_drug,
-  COALESCE(SUM(CASE WHEN oi.item_name LIKE '检查%'  THEN oi.amount END), 0) AS fee_exam,
-  o.discount                                           AS discount_store,
-  o.total_amount                                       AS total_amount_store,
-  (o.total_amount - o.discount)                        AS payable
-FROM orders o
-JOIN patients       p   ON p.patient_id      = o.patient_id
-LEFT JOIN departments dep ON dep.department_id = o.department_id
-LEFT JOIN doctors    d   ON d.doctor_id      = o.doctor_id
-LEFT JOIN order_items oi ON oi.order_id      = o.order_id
-%1
-GROUP BY
-  o.order_id, o.created_at, p.name, dep.name, d.name, o.discount, o.total_amount
-ORDER BY o.created_at DESC
-)SQL";
-
-    const QString whereClause = hasFilter ? QStringLiteral("WHERE o.order_id = :oid") : QString();
-    const QString sql = QString::fromUtf8(kSqlTmpl).arg(whereClause);
-
-    QSqlQuery q(db);
-    if (!q.prepare(sql)) {
-        const QString err = q.lastError().text();
-        qWarning() << "[loadOrderDetails] prepare failed:" << err;
-        sendJson(sock, {
-            {"type", "loadOrderDetails"},
-            {"success", false},
-            {"error",  QString("prepare failed: %1").arg(err)}
-        });
-        return;
-    }
-    if (hasFilter) q.bindValue(":oid", orderId);
-
-    if (!q.exec()) {
-        const QString err = q.lastError().text();
-        qWarning() << "[loadOrderDetails] exec failed:" << err;
-        sendJson(sock, {
-            {"type", "loadOrderDetails"},
-            {"success", false},
-            {"error",  QString("exec failed: %1").arg(err)}
-        });
-        return;
-    }
-
-    QJsonArray orders;
-   // orders.reserve(q.size() > 0 ? q.size() : 8);
-
-    while (q.next()) {
-        const int     oid          = q.value("order_id").toInt();
-        const QString orderCode    = q.value("order_code").toString();   // PO20230830xxxxxx
-        const QString createTime   = q.value("create_time").toString();  // 建议用 ISO 字符串
-        const QString patientName  = q.value("patient_name").toString();
-        const QString department   = q.value("department").toString();
-        const QString doctorName   = q.value("doctor_name").toString();
-
-        const double feeReg        = q.value("fee_reg").toDouble();
-        const double feeConsult    = q.value("fee_consult").toDouble();
-        const double feeDrug       = q.value("fee_drug").toDouble();
-        const double feeExam       = q.value("fee_exam").toDouble();
-
-        const double discountStore = q.value("discount_store").toDouble();     // 库里为非负
-        const double discountOut   = -discountStore;                           // UI 需要负号展示
-        const double payable       = q.value("payable").toDouble();            // sum - discount
-
-        QJsonObject fee{
-            {"挂号费", feeReg},
-            {"诊查费", feeConsult},
-            {"药品费", feeDrug},
-            {"检查费", feeExam}
-        };
-
-        QJsonObject item{
-            {"order_id",      oid},
-            {"order_code",    orderCode},
-            {"create_time",   createTime},
-            {"patient_name",  patientName},
-            {"department",    department},
-            {"doctor_name",   doctorName},
-            {"fee",           fee},
-            {"discount",      discountOut},      // 负值
-            {"total_amount",  payable}           // 应付 = 合计 - 折扣
-        };
-
-        orders.append(item);
-
-        qDebug().noquote() << QString("[Order] %1 %2 | %3/%4 | 应付:%5 折扣:%6")
-                              .arg(orderCode, createTime, patientName, department)
-                              .arg(payable).arg(discountOut);
-    }
-
-    sendJson(sock, {
-        {"type",     "loadOrderDetails"},   // 注意：响应仍然用同一个 type，满足你在 Widget 里判断
-        {"success",  true},
-        {"count",    static_cast<int>(orders.size())},
-        {"orders",   orders}
-    });
-}
-
-void Widget::handleloadAvailableDoctors(QTcpSocket *sock, const QJsonObject &obj)
-{
-    Q_UNUSED(obj);
-
-    QSqlDatabase db = QSqlDatabase::database();
-    if (!db.isValid() || !db.isOpen()) {
-        qWarning() << "[loadAvailableDoctors] database not open";
-        sendJson(sock, {
-            {"type", "loadAvailableDoctors"},
-            {"success", false},
-            {"error",  "database not open"}
-        });
-        return;
-    }
-
-    QSqlQuery q(db);
-    static const char* sql = R"SQL(
-        SELECT d.doctor_id,
-               d.name,
-               d.title,
-               dep.name AS department,
-               d.specialty
-        FROM doctors d
-        JOIN departments dep ON dep.department_id = d.department_id
-        ORDER BY d.doctor_id
-    )SQL";
-
-    if (!q.prepare(sql) || !q.exec()) {
-        qWarning() << "[doctors] sql error:" << q.lastError().text();
-        sendJson(sock, {
-            {"type", "loadAvailableDoctors"},
-            {"success", false},
-            {"error",  q.lastError().text()}
-        });
-        return;
-    }
-
-    QJsonArray doctors;
-    // doctors.reserve(q.size() > 0 ? q.size() : 8);
-
-    while (q.next()) {
-        const int      doctorId   = q.value("doctor_id").toInt();
-        const QString  name       = q.value("name").toString();
-        const QString  pureTitle  = q.value("title").toString();
-        const QString  department = q.value("department").toString();
-        const QString  title      = pureTitle + " | " + department;   // 例："主任医师 | 心血管内科"
-        const QString  specialty  = q.value("specialty").toString();  // 例："擅长: ..."
-
-        QJsonObject item{
-            {"doctor_id",  doctorId},
-            {"name",       name},
-            {"title",      title},
-            {"department", department},
-            {"specialty",  specialty},
-            // 预留：前端若已有时段结构，这里给一个空数组占位（后续可由另一接口填充）
-            {"time_slots", QJsonArray{}}
-        };
-        doctors.append(item);
-
-        qDebug().noquote() << QString("[Doctor] #%1 %2 %3 %4")
-                              .arg(doctorId)
-                              .arg(name, title, specialty);
-    }
-
-    sendJson(sock, {
-        {"type",    "loadAvailableDoctors"},   // 按你的要求：响应同样用这个 type
-        {"success", true},
-        {"count",   static_cast<int>(doctors.size())},
-        {"doctors", doctors}
-    });
-}
-
-void Widget::handlesubmitAppointmentRequest(QTcpSocket *sock, const QJsonObject &obj)
-{
-    // 1) 参数校验（与 UI 对齐）
-    const int patientId = obj.value("patient_id").toInt(-1);
-    const int doctorId  = obj.value("doctor_id").toInt(-1);
-    const int slotId    = obj.value("slot_id").toInt(-1);
-    const QString desc  = obj.value("disease_description").toString();
-
-    if (patientId < 0 || doctorId < 0 || slotId < 0) {
-        sendJson(sock, {
-            {"type",    "submitAppointmentRequest"},
-            {"success", false},
-            {"error",   "invalid arguments: require patient_id, doctor_id, slot_id"}
-        });
-        return;
-    }
-
-    // 2) 打开数据库
-    QSqlDatabase db = QSqlDatabase::database();
-    if (!db.isValid() || !db.isOpen()) {
-        qWarning() << "[submitAppointmentRequest] database not open";
-        sendJson(sock, {
-            {"type",    "submitAppointmentRequest"},
-            {"success", false},
-            {"error",   "database not open"}
-        });
-        return;
-    }
-
-    // 3) 插入预约（只写 UI 需要的列；created_at 可由表默认值填写）
-    static const char *kSql = R"SQL(
-        INSERT INTO appointments
-            (patient_id, doctor_id, slot_id, disease_description)
-        VALUES
-            (:patient_id, :doctor_id, :slot_id, :disease_description)
-    )SQL";
-
-    QSqlQuery q(db);
-
-    // 可选：事务，便于后续扩展扣减号源等
-    if (!db.transaction()) {
-        qWarning() << "[submitAppointmentRequest] begin tx failed:" << db.lastError().text();
-        // 不中断，继续尝试执行（有的驱动不需要显式事务）
-    }
-
-    if (!q.prepare(kSql)) {
-        const QString err = q.lastError().text();
-        qWarning() << "[submitAppointmentRequest] prepare failed:" << err;
-        sendJson(sock, {
-            {"type",    "submitAppointmentRequest"},
-            {"success", false},
-            {"error",   QString("prepare failed: %1").arg(err)}
-        });
-        if (db.isOpen()) db.rollback();
-        return;
-    }
-
-    q.bindValue(":patient_id", patientId);
-    q.bindValue(":doctor_id",  doctorId);
-    q.bindValue(":slot_id",    slotId);
-    q.bindValue(":disease_description", desc);
-
-    if (!q.exec()) {
-        const QString err = q.lastError().text();
-        qWarning() << "[submitAppointmentRequest] exec failed:" << err;
-        sendJson(sock, {
-            {"type",    "submitAppointmentRequest"},
-            {"success", false},
-            {"error",   QString("exec failed: %1").arg(err)}
-        });
-        if (db.isOpen()) db.rollback();
-        return;
-    }
-
-    const QVariant newId = q.lastInsertId();   // SQLite/MySQL 可用；部分驱动可能返回无效
-    if (!db.commit()) {
-        qWarning() << "[submitAppointmentRequest] commit failed:" << db.lastError().text();
-        // 即便提交失败，也给出错误
-        sendJson(sock, {
-            {"type",    "submitAppointmentRequest"},
-            {"success", false},
-            {"error",   QString("commit failed: %1").arg(db.lastError().text())}
-        });
-        return;
-    }
-
-    // 4) 响应（type 仍然是 submitAppointmentRequest，满足你在 Widget 里判断）
-    QJsonObject resp{
-        {"type",          "submitAppointmentRequest"},
-        {"success",       true},
-        {"appointment_id", newId.isValid() ? newId.toLongLong() : -1},
-        {"patient_id",    patientId},
-        {"doctor_id",     doctorId},
-        {"slot_id",       slotId}
-        // 需要的话可回显 desc；通常不必
-        // {"disease_description", desc}
-    };
-    sendJson(sock, resp);
-}
-
-void Widget::handleloadDoctorList(QTcpSocket *sock, const QJsonObject &obj)
-    {
-        Q_UNUSED(obj);
-
-        QSqlDatabase db = QSqlDatabase::database();
-        if (!db.isValid() || !db.isOpen()) {
-            qWarning() << "[loadDoctorList] database not open";
-            sendJson(sock, {
-                {"type", "loadDoctorList"},
-                {"success", false},
-                {"error",  "database not open"}
-            });
-            return;
-        }
-
-        // 只查 UI 需要的列（与前端字段对齐）
-        static const char* SQL_DOCTORS_FOR_UI =
-            "SELECT "
-            "  d.doctor_id, "
-            "  d.name, "
-            "  d.title, "
-            "  dep.name AS department_name, "
-            "  COALESCE(d.specialty, '')   AS specialty, "
-            "  COALESCE(d.experience, '')  AS experience "
-            "FROM doctors d "
-            "JOIN departments dep ON dep.department_id = d.department_id "
-            "ORDER BY d.doctor_id;";
-
-        QSqlQuery q(db);
-        if (!q.prepare(SQL_DOCTORS_FOR_UI) || !q.exec()) {
-            qWarning() << "[loadDoctorList] sql error:" << q.lastError().text();
-            sendJson(sock, {
-                {"type", "loadDoctorList"},
-                {"success", false},
-                {"error",  q.lastError().text()}
-            });
-            return;
-        }
-
-        QJsonArray doctors;
-        // doctors.reserve(q.size() > 0 ? q.size() : 8);
-
-        while (q.next()) {
-            const int      doctorId  = q.value("doctor_id").toInt();
-            const QString  name      = q.value("name").toString();
-            const QString  title     = q.value("title").toString();
-            const QString  dept      = q.value("department_name").toString();
-            const QString  specialty = q.value("specialty").toString();   // 例如："擅长：..."
-            const QString  exp       = q.value("experience").toString();  // 例如："25年"
-
-            // 仅返回表里有的字段；若 UI 还需 schedule/education/awards，可另建表或另一个接口
-            QJsonObject item{
-                {"doctor_id",  doctorId},
-                {"name",       name},
-                {"title",      title},
-                {"department", dept},
-                {"specialty",  specialty},
-                {"experience", exp}
-            };
-            doctors.append(item);
-
-            qDebug().noquote() << QString("[Doctor] #%1 %2 %3 %4 %5")
-                                  .arg(doctorId)
-                                  .arg(name, title, dept, exp);
-        }
-
-        // 响应仍然用 "loadDoctorList"（与你的 Widget 判断一致）
-        sendJson(sock, {
-            {"type",    "loadDoctorList"},
-            {"success", true},
-            {"count",   static_cast<int>(doctors.size())},
-            {"doctors", doctors}
-        });
-    }
-
-// ======= 修正后的 handleonPurchaseClicked，已改为成员函数 + 去掉 makeError =======
-void Widget::handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
-{
-    const int patientId = obj.value("patient_id").toInt(-1);
-    const int reqOid    = obj.value("order_id").toInt(0);
-    const QJsonArray cart = obj.value("cart").toArray();
-
-    if (patientId < 0) { sendError(sock, "onPurchaseClicked", "invalid patient_id"); return; }
-    if (cart.isEmpty()) { sendError(sock, "onPurchaseClicked", "cart is empty"); return; }
-
-    QSqlDatabase db = QSqlDatabase::database();
-    if (!db.isValid() || !db.isOpen()) {
-        qWarning() << "[onPurchaseClicked] database not open";
-        sendError(sock, "onPurchaseClicked", "database not open");
-        return;
-    }
-
-    if (!db.transaction()) {
-        qWarning() << "[onPurchaseClicked] begin transaction failed:" << db.lastError().text();
-    }
-
-    int oid = 0;
-
-    if (reqOid > 0) {
-        QSqlQuery chk(db);
-        const char *sql_chk = R"SQL(
-            SELECT order_id FROM orders
-            WHERE order_id = :oid AND patient_id = :p AND status = 'created'
-            LIMIT 1
-        )SQL";
-        if (!chk.prepare(sql_chk)) {
-            const QString err = chk.lastError().text();
-            qWarning() << "[onPurchaseClicked] chk prepare failed:" << err;
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("sql prepare failed(chk): %1").arg(err));
-            return;
-        }
-        chk.bindValue(":oid", reqOid);
-        chk.bindValue(":p",   patientId);
-        if (!chk.exec()) {
-            const QString err = chk.lastError().text();
-            qWarning() << "[onPurchaseClicked] chk exec failed:" << err;
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("sql exec failed(chk): %1").arg(err));
-            return;
-        }
-        if (chk.next()) {
-            oid = reqOid;
-        }
-    }
-
-    if (oid == 0) {
-        QSqlQuery qi(db);
-        const char *sql_new = R"SQL(
-            INSERT INTO orders (patient_id, status, total_amount, discount, created_at)
-            VALUES (:p, 'created', 0, 0, CURRENT_TIMESTAMP)
-        )SQL";
-        if (!qi.prepare(sql_new)) {
-            const QString err = qi.lastError().text();
-            qWarning() << "[onPurchaseClicked] new order prepare failed:" << err;
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("prepare failed(new order): %1").arg(err));
-            return;
-        }
-        qi.bindValue(":p", patientId);
-        if (!qi.exec()) {
-            const QString err = qi.lastError().text();
-            qWarning() << "[onPurchaseClicked] new order exec failed:" << err;
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("exec failed(new order): %1").arg(err));
-            return;
-        }
-        QVariant v = qi.lastInsertId();
-        oid = v.isValid() ? v.toInt() : 0;
-        if (oid <= 0) {
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", "cannot get new order_id");
-            return;
-        }
-    }
-
-    QSqlQuery qFindMed(db);
-    if (!qFindMed.prepare(R"SQL(
-        SELECT name, price FROM medicines WHERE medicine_id = :mid LIMIT 1
-    )SQL")) {
-        const QString err = qFindMed.lastError().text();
-        qWarning() << "[onPurchaseClicked] find med prepare failed:" << err;
-        db.rollback();
-        sendError(sock, "onPurchaseClicked", QString("prepare failed(find med): %1").arg(err));
-        return;
-    }
-
-    QSqlQuery qInsItem(db);
-    if (!qInsItem.prepare(R"SQL(
-        INSERT INTO order_items
-            (order_id, item_type, item_name, medicine_id, quantity, unit_price, amount)
-        VALUES
-            (:oid, 'drug', :iname, :mid, :qty, :uprice, :amount)
-    )SQL")) {
-        const QString err = qInsItem.lastError().text();
-        qWarning() << "[onPurchaseClicked] insert item prepare failed:" << err;
-        db.rollback();
-        sendError(sock, "onPurchaseClicked", QString("prepare failed(insert item): %1").arg(err));
-        return;
-    }
-
-    QJsonArray itemsOut;
-    double total = 0.0;
-
-    for (const QJsonValue &v : cart) {
-        const QJsonObject it = v.toObject();
-        const int mid = it.value("medicine_id").toInt(-1);
-        const int qty = it.value("qty").toInt(0);
-        double unitPrice = it.value("unit_price").toDouble(-1.0);
-
-        if (mid < 0 || qty <= 0) {
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", "invalid cart item (medicine_id/qty)");
-            return;
-        }
-
-        qFindMed.bindValue(":mid", mid);
-        if (!qFindMed.exec()) {
-            const QString err = qFindMed.lastError().text();
-            qWarning() << "[onPurchaseClicked] find med exec failed:" << err;
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("exec failed(find med): %1").arg(err));
-            return;
-        }
-        if (!qFindMed.next()) {
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("medicine not found: id=%1").arg(mid));
-            return;
-        }
-        const QString medName = qFindMed.value("name").toString();
-        const double  dbPrice = qFindMed.value("price").toDouble();
-        if (unitPrice < 0.0) unitPrice = dbPrice;
-
-        const double amount = unitPrice * static_cast<double>(qty);
-        total += amount;
-
-        const QString itemName = QStringLiteral("药品-%1").arg(medName);
-        qInsItem.bindValue(":oid",    oid);
-        qInsItem.bindValue(":iname",  itemName);
-        qInsItem.bindValue(":mid",    mid);
-        qInsItem.bindValue(":qty",    qty);
-        qInsItem.bindValue(":uprice", unitPrice);
-        qInsItem.bindValue(":amount", amount);
-        if (!qInsItem.exec()) {
-            const QString err = qInsItem.lastError().text();
-            qWarning() << "[onPurchaseClicked] insert item exec failed:" << err;
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("exec failed(insert item): %1").arg(err));
-            return;
-        }
-
-        itemsOut.append(QJsonObject{
-            {"medicine_id", mid},
-            {"name",        medName},
-            {"qty",         qty},
-            {"unit_price",  unitPrice},
-            {"amount",      amount}
-        });
-    }
-
-    {
-        QSqlQuery qUpd(db);
-        if (!qUpd.prepare(R"SQL(
-            UPDATE orders SET total_amount = COALESCE(total_amount,0) + :delta WHERE order_id = :oid
-        )SQL")) {
-            const QString err = qUpd.lastError().text();
-            qWarning() << "[onPurchaseClicked] update order prepare failed:" << err;
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("prepare failed(update order): %1").arg(err));
-            return;
-        }
-        qUpd.bindValue(":delta", total);
-        qUpd.bindValue(":oid",   oid);
-        if (!qUpd.exec()) {
-            const QString err = qUpd.lastError().text();
-            qWarning() << "[onPurchaseClicked] update order exec failed:" << err;
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("exec failed(update order): %1").arg(err));
-            return;
-        }
-    }
-
-    QString orderCode; double totalAmount=0.0; double discount=0.0;
-    {
-        QSqlQuery qSum(db);
-        const char *sqlSum = R"SQL(
-            SELECT
-              o.total_amount,
-              o.discount,
-              ('PO' || strftime('%Y%m%d', o.created_at) || printf('%06d', o.order_id)) AS order_code
-            FROM orders o WHERE o.order_id = :oid LIMIT 1
-        )SQL";
-        if (!qSum.prepare(sqlSum)) {
-            const QString err = qSum.lastError().text();
-            qWarning() << "[onPurchaseClicked] sum prepare failed:" << err;
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("prepare failed(sum): %1").arg(err));
-            return;
-        }
-        qSum.bindValue(":oid", oid);
-        if (!qSum.exec() || !qSum.next()) {
-            const QString err = qSum.lastError().text();
-            qWarning() << "[onPurchaseClicked] sum exec/next failed:" << err;
-            db.rollback();
-            sendError(sock, "onPurchaseClicked", QString("exec failed(sum): %1").arg(err));
-            return;
-        }
-        totalAmount = qSum.value("total_amount").toDouble();
-        discount    = qSum.value("discount").toDouble();
-        orderCode   = qSum.value("order_code").toString();
-    }
-
-    if (!db.commit()) {
-        const QString err = db.lastError().text();
-        qWarning() << "[onPurchaseClicked] commit failed:" << err;
-        sendError(sock, "onPurchaseClicked", QString("commit failed: %1").arg(err));
-        return;
-    }
-
-    sendJson(sock, {
-        {"type",          "onPurchaseClicked"},
-        {"success",       true},
-        {"order_id",      oid},
-        {"order_code",    orderCode},
-        {"total_amount",  totalAmount},
-        {"discount",      discount},
-        {"count",         static_cast<int>(itemsOut.size())},
-        {"items",         itemsOut}
-    });
-}
-
-void Widget::handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
-{
-    // 0) 读取参数 + 校验
-    const int     orderId = obj.value("order_id").toInt(-1);
-    QString       method  = obj.value("method").toString().trimmed();      // 例：WeChat/Alipay/Cash
-    const double  amount  = obj.value("amount").toDouble(-1.0);
-    QString       status  = obj.value("status").toString("success");       // success/pending/failed
-    const QString txref   = obj.value("transaction_ref").toString();
-
-    if (orderId <= 0) { sendError(sock, "processPayment", "invalid order_id"); return; }
-    if (method.isEmpty()) { method = "Unknown"; }          // 不强制失败
-    if (amount <= 0.0) { sendError(sock, "processPayment", "invalid amount"); return; }
-    if (status != "success" && status != "pending" && status != "failed") status = "success";
-
-    // 1) 打开数据库
-    QSqlDatabase db = QSqlDatabase::database();
-    if (!db.isValid() || !db.isOpen()) {
-        qWarning() << "[processPayment] database not open";
-        sendError(sock, "processPayment", "database not open");
-        return;
-    }
-
-    // 2) 事务
-    if (!db.transaction()) {
-        qWarning() << "[processPayment] begin tx failed:" << db.lastError().text();
-        // 不中断，继续
-    }
-
-    // 3) 检查订单存在
-    {
-        QSqlQuery chk(db);
-        static const char* sql_chk =
-            "SELECT order_id FROM orders WHERE order_id=:id LIMIT 1";
-        if (!chk.prepare(sql_chk)) { db.rollback(); sendError(sock, "processPayment", "数据库错误(prepare chk)"); return; }
-        chk.bindValue(":id", orderId);
-        if (!chk.exec() || !chk.next()) { db.rollback(); sendError(sock, "processPayment", "订单不存在"); return; }
-    }
-
-    // 4) 插入 payment（触发器可更新订单状态；若无触发器，后面我们会自行汇总）
-    int paymentId = -1;
-    {
-        QSqlQuery ins(db);
-        static const char* sql_ins =
-            "INSERT INTO payments(order_id, method, amount, status, transaction_ref) "
-            "VALUES(:o,:m,:a,:s,:t)";
-        if (!ins.prepare(sql_ins))  { db.rollback(); sendError(sock, "processPayment", "数据库错误(prepare ins)"); return; }
-        ins.bindValue(":o", orderId);
-        ins.bindValue(":m", method);
-        ins.bindValue(":a", amount);
-        ins.bindValue(":s", status);
-        ins.bindValue(":t", txref.isEmpty()? QVariant(QVariant::String) : QVariant(txref));
-
-        if (!ins.exec()) { db.rollback(); sendError(sock, "processPayment", "支付写入失败"); return; }
-
-        // lastInsertId 更通用；如需 SQLite 兼容也可备用查询 last_insert_rowid()
-        const QVariant lid = ins.lastInsertId();
-        if (lid.isValid()) {
-            paymentId = lid.toInt();
-        } else {
-            QSqlQuery rid(db);
-            if (rid.exec("SELECT last_insert_rowid()") && rid.next())
-                paymentId = rid.value(0).toInt();
-        }
-    }
-
-    // 5) 汇总订单金额与已付
-    double total = 0.0, paid = 0.0; QString orderStatus;
-    {
-        QSqlQuery qp(db);
-        static const char* sql_paid =
-            "SELECT COALESCE(SUM(amount),0) FROM payments WHERE order_id=:o AND status='success'";
-        qp.prepare(sql_paid); qp.bindValue(":o", orderId);
-        if (qp.exec() && qp.next()) paid = qp.value(0).toDouble();
-
-        QSqlQuery qo(db);
-        static const char* sql_ord =
-            "SELECT status, total_amount FROM orders WHERE order_id=:o LIMIT 1";
-        qo.prepare(sql_ord); qo.bindValue(":o", orderId);
-        if (qo.exec() && qo.next()) {
-            orderStatus = qo.value("status").toString();
-            total       = qo.value("total_amount").toDouble();
-        }
-    }
-    const double due = (total - paid) > 0.0 ? (total - paid) : 0.0;
-
-    QJsonArray items;
-    {
-        QSqlQuery qi(db);
-        static const char* sql_items =
-            "SELECT medicine_id, item_name, quantity, unit_price, amount "
-            "FROM order_items WHERE order_id=:o ORDER BY rowid";
-        if (qi.prepare(sql_items)) {
-            qi.bindValue(":o", orderId);
-            if (qi.exec()) {
-                while (qi.next()) {
-                    items.append(QJsonObject{
-                        {"medicine_id", qi.value("medicine_id").toInt()},
-                        {"name",        qi.value("item_name").toString()},
-                        {"qty",         qi.value("quantity").toInt()},
-                        {"unit_price",  qi.value("unit_price").toDouble()},
-                        {"amount",      qi.value("amount").toDouble()}
-                    });
-                }
-            }
-        }
-    }
-
-    if (!db.commit()) {
-        const QString err = db.lastError().text();
-        qWarning() << "[processPayment] commit failed:" << err;
-        sendError(sock, "processPayment", QString("commit failed: %1").arg(err));
-        return;
+        arr.append(QJsonObject{
+                       {"id",                   q.value("patient_id").toInt()},
+                       {"name",                 q.value("name").toString()},
+                       {"patient_code",         QString("P%1").arg(q.value("patient_id").toInt(), 6, 10, QChar('0'))},
+                       {"age",                  q.value("age").toInt()},
+                       {"department",           q.value("department").toString()},
+                       {"is_inpatient",         q.value("is_inpatient").toInt()!=0},
+                       {"is_medical_insurance", q.value("is_medical_insurance").toInt()!=0},
+                       {"is_key_focus",         q.value("is_key_focus").toInt()!=0}
+                   });
     }
 
     sendJson(sock, QJsonObject{
-        {"type","processPayment"},
-        {"success", status=="success"},
-        {"message", status=="success" ? "支付已记录"
-                                      : (status=="pending" ? "支付待确认" : "支付失败")},
-        {"payment", QJsonObject{
-            {"payment_id", paymentId},
-            {"order_id",   orderId},
-            {"method",     method},
-            {"amount",     amount},
-            {"status",     status},
-            {"transaction_ref", txref}
-        }},
-        {"order", QJsonObject{
-            {"order_id",     orderId},
-            {"status",       orderStatus},
-            {"total_amount", total},
-            {"paid_amount",  paid},
-            {"due_amount",   due}
-        }},
-        {"items", items}
-    });
-}
-
-// bu yao dong xia mian de, yijing ok
-void Widget::handleGetPatientProfile(QTcpSocket *sock, const QJsonObject &obj)
-{
-    const int pid = obj.value("patient_id").toInt(-1);
-    if (pid <= 0) {
-        sendJson(sock, {{"type","patient_profile_result"},{"success",false},{"message","参数错误：缺少 patient_id"}});
-        return;
-    }
-
-    QSqlDatabase db = QSqlDatabase::database();
-    QSqlQuery q(db);
-
-    const char *sql = R"SQL(
-        SELECT patient_id, username, name, gender, birth_date, id_number,
-               blood_type, mobile, email, emergency_contact, emergency_phone,
-               insurance_type, insurance_card, allergies, history, created_at
-        FROM patients WHERE patient_id=:id LIMIT 1
-    )SQL";
-    if (!q.prepare(sql)) {
-        qWarning() << "[get_profile] prepare failed:" << q.lastError().text();
-        sendJson(sock, {{"type","patient_profile_result"},{"success",false},{"message","数据库错误(prepare)"}});
-        return;
-    }
-    q.bindValue(":id", pid);
-    if (!q.exec()) {
-        qWarning() << "[get_profile] exec error:" << q.lastError().text();
-        sendJson(sock, {{"type","patient_profile_result"},{"success",false},{"message","数据库错误"}});
-        return;
-    }
-    if (!q.next()) {
-        sendJson(sock, {{"type","patient_profile_result"},{"success",false},{"message","未找到该患者"}});
-        return;
-    }
-
-    QJsonObject profile{
-        {"patient_id",        q.value("patient_id").toInt()},
-        {"username",          q.value("username").toString()},
-        {"name",              q.value("name").toString()},
-        {"gender",            q.value("gender").toString()},
-        {"birth_date",        q.value("birth_date").toString()},        // "YYYY-MM-DD"
-        {"id_number",         q.value("id_number").toString()},
-        {"blood_type",        q.value("blood_type").toString()},        // 'A'/'B'/'AB'/'O'/'其他'
-        {"mobile",            q.value("mobile").toString()},
-        {"email",             q.value("email").toString()},
-        {"emergency_contact", q.value("emergency_contact").toString()},
-        {"emergency_phone",   q.value("emergency_phone").toString()},
-        {"insurance_type",    q.value("insurance_type").toString()},
-        {"insurance_card",    q.value("insurance_card").toString()},
-        {"allergies",         q.value("allergies").toString()},
-        {"history",           q.value("history").toString()},
-        {"created_at",        q.value("created_at").toString()}
-    };
-
-    sendJson(sock, {
-        {"type","patient_profile_result"},
-        {"success",true},
-        {"profile",profile}
-    });
-}
-
-void Widget::handleUpdatePatientProfile(QTcpSocket *sock, const QJsonObject &obj)
-{
-    const int pid = obj.value("patient_id").toInt(-1);
-    if (pid <= 0) {
-        sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","参数错误：缺少 patient_id"}});
-        return;
-    }
-
-    // 允许更新的字段：JSON key -> DB 列名（相同名直接写）
-    const QMap<QString, QString> allow {
-        {"gender","gender"},
-        {"birth_date","birth_date"},                 // "YYYY-MM-DD"
-        {"blood_type","blood_type"},                 // A/B/AB/O/其他
-        {"mobile","mobile"},
-        {"emergency_contact","emergency_contact"},
-        {"emergency_phone","emergency_phone"},
-        {"insurance_type","insurance_type"},
-        {"allergies","allergies"},
-        {"history","history"}
-    };
-
-    // 收集需要更新的列
-    QStringList sets;
-    QMap<QString, QVariant> binds;
-
-    for (auto it = allow.constBegin(); it != allow.constEnd(); ++it) {
-        if (obj.contains(it.key())) {
-            const auto v = obj.value(it.key());
-            // 简单校验（可按需加严）
-            if (it.key()=="gender") {
-                const QString g = v.toString().trimmed();
-                if (!QStringList({"男","女","其他"}).contains(g)) continue; // 非法值忽略
-                binds[":"+it.key()] = g;
-            } else if (it.key()=="blood_type") {
-                const QString bt = v.toString().trimmed();
-                if (!QStringList({"A","B","AB","O","其他"}).contains(bt)) continue;
-                binds[":"+it.key()] = bt;
-            } else if (it.key()=="birth_date") {
-                binds[":"+it.key()] = v.toString().trimmed(); // 交由后端保持字符串格式
-            } else {
-                binds[":"+it.key()] = v.toVariant();
-            }
-            sets << QString("%1=:%2").arg(it.value(), it.key());
-        }
-    }
-
-    if (sets.isEmpty()) {
-        sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","无可更新字段"}});
-        return;
-    }
-
-    QSqlDatabase db = QSqlDatabase::database();
-    if (!db.transaction()) {
-        qWarning() << "[update_profile] begin tx failed:" << db.lastError().text();
-        sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","数据库错误(事务)"}});
-        return;
-    }
-
-    QSqlQuery q(db);
-    const QString sql = "UPDATE patients SET " + sets.join(", ") + " WHERE patient_id=:pid";
-    if (!q.prepare(sql)) {
-        qWarning() << "[update_profile] prepare failed:" << q.lastError().text() << " sql=" << sql;
-        db.rollback();
-        sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","数据库错误(prepare)"}});
-        return;
-    }
-
-    // 绑定
-    for (auto it = binds.constBegin(); it != binds.constEnd(); ++it) q.bindValue(it.key(), it.value());
-    q.bindValue(":pid", pid);
-
-    if (!q.exec()) {
-        qWarning() << "[update_profile] exec error:" << q.lastError().text();
-        db.rollback();
-        sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","更新失败"}});
-        return;
-    }
-
-    if (!db.commit()) {
-        qWarning() << "[update_profile] commit failed:" << db.lastError().text();
-        db.rollback();
-        sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","数据库错误(commit)"}});
-        return;
-    }
-
-    sendJson(sock, {{"type","update_patient_profile_result"},{"success",true},{"message","已保存"}});
-}
-
-void Widget::handleLogin(QTcpSocket *sock, const QJsonObject &obj)
-{
-    const QString username = obj.value("username").toString().trimmed();
-    const QString password = obj.value("password").toString();
-    const QString role     = obj.value("role").toString().trimmed(); // 前端字段是 role
-
-    if (username.isEmpty() || password.isEmpty() ||
-        (role != "patient" && role != "doctor" && role != "admin")) {
-        sendJson(sock, {{"type","login_result"},{"success",false},{"message","参数不完整/角色非法"}});
-        return;
-    }
-
-    QSqlDatabase db = QSqlDatabase::database();
-    qDebug() << "[login] driver =" << db.driverName()
-             << " username =" << username
-             << " role =" << role;
-
-    QSqlQuery q(db);                       // 显式绑定到当前连接
-    const char *sql =
-        "SELECT account_id, password_hash, role, patient_id, doctor_id "
-        "FROM accounts "
-        "WHERE username=:u AND role=:r AND is_active=1 "
-        "LIMIT 1";
-
-    // 1) 先检查 prepare 是否成功
-    if (!q.prepare(sql)) {
-        qWarning() << "[login] prepare failed:" << q.lastError().text()
-                   << " query=" << sql;
-        sendJson(sock, {{"type","login_result"},{"success",false},{"message","数据库错误(prepare)"}});
-        return;
-    }
-
-    // 2) 绑定命名参数（不要和 ? 混用）
-    q.bindValue(":u", username);
-    q.bindValue(":r", role);
-
-    // 打印已绑定的键，确认确实绑定了 2 个
-    const auto bvs = q.boundValues();
-    qDebug() << "[login] bound keys =" << bvs.keys();
-
-    // 3) 执行
-    if (!q.exec()) {
-        qWarning() << "[login] exec error:" << q.lastError().text()
-                   << " lastQuery=" << q.lastQuery()
-                   << " boundKeys=" << bvs.keys();
-        sendJson(sock, {{"type","login_result"},{"success",false},{"message","数据库错误(exec)"}});
-        return;
-    }
-
-    if (!q.next()) {
-        sendJson(sock, {{"type","login_result"},{"success",false},{"message","账号不存在或已停用"}});
-        return;
-    }
-
-    const QString stored = q.value("password_hash").toString(); // 你现在用明文就直接比
-    if (stored != password) {
-        sendJson(sock, {{"type","login_result"},{"success",false},{"message","密码错误"}});
-        return;
-    }
-
-    QJsonObject payload{
-        {"type","login_result"},
-        {"success",true},
-        {"message","登录成功"},
-        {"role", role}
-    };
-
-    if (role == "patient") {
-        const int pid = q.value("patient_id").toInt();
-        QSqlQuery qp(db);
-        qp.prepare("SELECT name, username FROM patients WHERE patient_id=:id");
-        qp.bindValue(":id", pid);
-        if (qp.exec() && qp.next()) {
-            payload.insert("patient_id", pid);
-            payload.insert("name", qp.value("name").toString());
-            payload.insert("nickname", qp.value("username").toString());
-        }
-    } else if (role == "doctor") {
-        const int did = q.value("doctor_id").toInt();
-        QSqlQuery qd(db);
-        qd.prepare(
-            "SELECT d.name, d.title, dep.name AS department "
-            "FROM doctors d JOIN departments dep ON dep.department_id=d.department_id "
-            "WHERE d.doctor_id=:id"
-        );
-        qd.bindValue(":id", did);
-        if (qd.exec() && qd.next()) {
-            payload.insert("doctor_id", did);
-            payload.insert("name", qd.value("name").toString());
-            payload.insert("title", qd.value("title").toString());
-            payload.insert("department", qd.value("department").toString());
-        }
-    }
-
-    sendJson(sock, payload);
-}
-
-void Widget::handleRegister(QTcpSocket *sock, const QJsonObject &obj)
-{
-    qDebug() << "[register] raw json =" << obj;
-
-    const QString username = obj.value("username").toString().trimmed();
-    const QString password = obj.value("password").toString();
-    const QString role     = obj.value("user_type").toString().trimmed();   // "patient"/"doctor"
-    const QString name     = obj.value("name").toString().trimmed();
-    const QString phone    = obj.value("phone").toString().trimmed();
-    const QString email    = obj.value("email").toString().trimmed();
-    const QString department = obj.value("department").toString().trimmed();
-
-    if (username.isEmpty() || password.isEmpty() ||
-        (role != "patient" && role != "doctor")) {
-        sendJson(sock, {{"type","register_result"},{"success",false},{"message","仅支持患者或医生注册"}});
-        return;
-    }
-
-    QSqlDatabase db = QSqlDatabase::database();
-    if (!db.transaction()) {
-        qWarning() << "[register] begin transaction failed:" << db.lastError().text();
-        sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}});
-        return;
-    }
-
-    // 账户重名检查（accounts.username 唯一）
-    {
-        QSqlQuery q(db);
-        const char *sql = "SELECT 1 FROM accounts WHERE username=:u LIMIT 1";
-        q.prepare(sql);
-        q.bindValue(":u", username);
-        if (!q.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}}); return; }
-        if (q.next()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","用户名已存在"}}); return; }
-    }
-
-    if (role == "patient") {
-        int pid = -1;
-        {   // patients
-            QSqlQuery ins(db);
-            ins.prepare("INSERT INTO patients(username, name, mobile, email) VALUES(:u,:n,:m,:e)");
-            ins.bindValue(":u", username);
-            ins.bindValue(":n", name.isEmpty()? username : name);
-            ins.bindValue(":m", phone);
-            ins.bindValue(":e", email);
-            if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建患者失败"}}); return; }
-            pid = ins.lastInsertId().toInt();
-        }
-        {   // accounts
-            QSqlQuery ins(db);
-            ins.prepare("INSERT INTO accounts(username, password_hash, role, patient_id, is_active) VALUES(:u,:p,'patient',:pid,1)");
-            ins.bindValue(":u", username);
-            ins.bindValue(":p", password);
-            ins.bindValue(":pid", pid);
-            if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建账户失败"}}); return; }
-        }
-        if (!db.commit()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}}); return; }
-
-        sendJson(sock, {{"type","register_result"},{"success",true},{"message","注册成功"},{"role","patient"},{"patient_id",pid},{"name", name.isEmpty()?username:name}});
-        return;
-    }
-
-    // 医生分支
-    if (role == "doctor") {
-        if (department.isEmpty()) {
-            db.rollback();
-            sendJson(sock, {{"type","register_result"},{"success",false},{"message","医生注册需选择科室"}});
-            return;
-        }
-
-        int depId = -1;
-        {   // 找到或创建科室
-            QSqlQuery q(db);
-            q.prepare("SELECT department_id FROM departments WHERE name=:n LIMIT 1");
-            q.bindValue(":n", department);
-            if (!q.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误(查科室)"}}); return; }
-            if (q.next()) depId = q.value(0).toInt();
-            else {
-                QSqlQuery ins(db);
-                ins.prepare("INSERT INTO departments(name) VALUES(:n)");
-                ins.bindValue(":n", department);
-                if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建科室失败"}}); return; }
-                depId = ins.lastInsertId().toInt();
-            }
-        }
-
-        int did = -1;
-        {   // 插入 doctors（最少字段：name/title/department_id）
-            QSqlQuery ins(db);
-            ins.prepare("INSERT INTO doctors(name, title, department_id) VALUES(:n, :t, :dep)");
-            ins.bindValue(":n", name.isEmpty()? username : name);
-            ins.bindValue(":t", "住院医师");            // 默认职称，后续可在资料页修改
-            ins.bindValue(":dep", depId);
-            if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建医生失败"}}); return; }
-            did = ins.lastInsertId().toInt();
-        }
-
-        {   // 插入 accounts（role=doctor）
-            QSqlQuery ins(db);
-            ins.prepare("INSERT INTO accounts(username, password_hash, role, doctor_id, is_active) VALUES(:u, :p, 'doctor', :did, 1)");
-            ins.bindValue(":u", username);
-            ins.bindValue(":p", password);
-            ins.bindValue(":did", did);
-            if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建账户失败"}}); return; }
-        }
-
-        if (!db.commit()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}}); return; }
-
-        sendJson(sock, {{"type","register_result"},{"success",true},{"message","注册成功"},{"role","doctor"},{"doctor_id",did},{"name", name.isEmpty()?username:name}});
-        return;
-    }
-}
-
-void Widget::sendJson(QTcpSocket *sock, const QJsonObject &obj)
-{
-    QJsonDocument doc(obj);
-    QByteArray payload = doc.toJson(QJsonDocument::Compact);
-    payload.append('\n'); // 按行协议
-    sock->write(payload);
-    sock->flush();
-}
-
-void Widget::sendError(QTcpSocket *sock, const QString &type, const QString &msg)
-{
-    sendJson(sock, QJsonObject{
-                 {"type", type},
-                 {"success", false},
-                 {"message", msg}
+                 {"type", "load_patient_list"},
+                 {"success", true},
+                 {"count", static_cast<int>(arr.size())},
+                 {"patients", arr}
              });
 }
+void Widget::handleLoadMedicalRecord(QTcpSocket *sock, const QJsonObject &obj)
+{
+    const int patientId = obj.value("patient_id").toInt(-1);
+    if (patientId <= 0) { sendError(sock,"load_medical_record","missing patient_id"); return; }
+
+    QSqlDatabase db = QSqlDatabase::database();
+    if (!db.isOpen()) { sendError(sock,"load_medical_record","database not open"); return; }
+
+    QSqlQuery q(db);
+    if (!q.prepare(R"SQL(
+                   SELECT record_id, patient_id, doctor_id,
+                   chief_complaint, present_illness, past_history,
+                   main_diagnosis, icd_code, admit_date, record_date, record_time
+                   FROM medical_records
+                   WHERE patient_id=:p
+                   ORDER BY record_date DESC, record_time DESC, record_id DESC
+                   LIMIT 1
+                   )SQL")) { sendError(sock,"load_medical_record","prepare failed"); return; }
+    q.bindValue(":p", patientId);
+
+    if (!q.exec()) { sendError(sock,"load_medical_record", q.lastError().text()); return; }
+    if (!q.next()) {
+        // 没有记录也要返回 success=true，方便前端显示“空表单”再保存
+        sendJson(sock, QJsonObject{
+                     {"type","load_medical_record"},
+                     {"success", true},
+                     {"found", false}
+                 });
+        return;
+    }
+
+    QJsonObject rec{
+        {"record_id",      q.value("record_id").toInt()},
+        {"patient_id",     q.value("patient_id").toInt()},
+        {"doctor_id",      q.value("doctor_id").isNull()? QJsonValue() : QJsonValue(q.value("doctor_id").toInt())},
+            {"chief_complaint",q.value("chief_complaint").toString()},
+            {"present_illness",q.value("present_illness").toString()},
+            {"past_history",   q.value("past_history").toString()},
+            {"main_diagnosis", q.value("main_diagnosis").toString()},
+            {"icd_code",       q.value("icd_code").toString()},
+            {"admit_date",     q.value("admit_date").toString()},
+            {"record_date",    q.value("record_date").toString()},
+            {"record_time",    q.value("record_time").toString()}
+        };
+
+        sendJson(sock, QJsonObject{
+                     {"type","load_medical_record"},
+                     {"success", true},
+                     {"found", true},
+                     {"record", rec}
+                 });
+    }
+    void Widget::handleSaveMedicalRecord(QTcpSocket *sock, const QJsonObject &obj)
+    {
+        const int patientId = obj.value("patient_id").toInt(-1);
+        const int doctorId  = obj.value("doctor_id").toInt(-1);
+        const int recordId  = obj.value("record_id").toInt(0);
+
+        if (patientId <= 0) { sendError(sock,"save_medical_record","missing patient_id"); return; }
+
+        auto S = [&](const QString &k){ return obj.value(k).toString(); };
+        const QString chief   = S("chief_complaint");
+        const QString present = S("present_illness");
+        const QString past    = S("past_history");
+        const QString diag    = S("main_diagnosis");
+        const QString icd     = S("icd_code");
+        const QString admit   = S("admit_date");
+        const QString rdate   = S("record_date");
+        const QString rtime   = S("record_time");
+
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isOpen()) { sendError(sock,"save_medical_record","database not open"); return; }
+
+        QSqlQuery q(db);
+        if (recordId > 0) {
+            if (!q.prepare(R"SQL(
+                           UPDATE medical_records
+                           SET doctor_id=:d, chief_complaint=:c, present_illness=:pi, past_history=:ph,
+                           main_diagnosis=:md, icd_code=:icd, admit_date=:ad, record_date=:rd, record_time=:rt,
+                           updated_at=CURRENT_TIMESTAMP
+                           WHERE record_id=:id AND patient_id=:p
+                           )SQL")) { sendError(sock,"save_medical_record","prepare update failed"); return; }
+            q.bindValue(":id",  recordId);
+        } else {
+            if (!q.prepare(R"SQL(
+                           INSERT INTO medical_records(
+                           patient_id, doctor_id, chief_complaint, present_illness, past_history,
+                           main_diagnosis, icd_code, admit_date, record_date, record_time
+                           ) VALUES(:p,:d,:c,:pi,:ph,:md,:icd,:ad,:rd,:rt)
+                           )SQL")) { sendError(sock,"save_medical_record","prepare insert failed"); return; }
+        }
+
+        q.bindValue(":p",  patientId);
+        q.bindValue(":d",  doctorId>0? doctorId: QVariant(QVariant::Int));
+        q.bindValue(":c",  chief);
+        q.bindValue(":pi", present);
+        q.bindValue(":ph", past);
+        q.bindValue(":md", diag);
+        q.bindValue(":icd",icd);
+        q.bindValue(":ad", admit);
+        q.bindValue(":rd", rdate);
+        q.bindValue(":rt", rtime);
+
+        if (!q.exec()) { sendError(sock,"save_medical_record", q.lastError().text()); return; }
+
+        const int rid = (recordId>0) ? recordId : q.lastInsertId().toInt();
+        sendJson(sock, QJsonObject{
+                     {"type","save_medical_record"},
+                     {"success", true},
+                     {"record_id", rid}
+                 });
+    }
+    void Widget::handleLoadMedicalOrders(QTcpSocket *sock, const QJsonObject &obj)
+    {
+        const int patientId = obj.value("patient_id").toInt(-1);
+        if (patientId <= 0) { sendError(sock,"load_medical_orders","missing patient_id"); return; }
+
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isOpen()) { sendError(sock,"load_medical_orders","database not open"); return; }
+
+        int orderId = obj.value("order_id").toInt(0);
+
+        // 若未指定 order_id, 取该患者最新一张
+        if (orderId <= 0) {
+            QSqlQuery q(db);
+            q.prepare("SELECT order_id FROM medical_orders WHERE patient_id=:p ORDER BY order_id DESC LIMIT 1");
+            q.bindValue(":p", patientId);
+            if (!q.exec() || !q.next()) {
+                // 没有也返回空
+                sendJson(sock, {{"type","load_medical_orders"},{"success",true},{"found",false}});
+                return;
+            }
+            orderId = q.value(0).toInt();
+        }
+
+        QSqlQuery qm(db);
+        qm.prepare("SELECT order_id, patient_id, doctor_id, notes, created_at FROM medical_orders WHERE order_id=:id LIMIT 1");
+        qm.bindValue(":id", orderId);
+        if (!qm.exec() || !qm.next()) { sendError(sock,"load_medical_orders","order not found"); return; }
+
+        QJsonObject order{
+            {"order_id",   qm.value("order_id").toInt()},
+            {"patient_id", qm.value("patient_id").toInt()},
+            {"doctor_id",  qm.value("doctor_id").toInt()},
+            {"notes",      qm.value("notes").toString()},
+            {"created_at", qm.value("created_at").toString()}
+        };
+
+        QSqlQuery qi(db);
+        qi.prepare(R"SQL(
+                   SELECT item_id, order_date, order_time, content, doctor_name, signed_by
+                   FROM medical_order_items
+                   WHERE order_id=:id
+                   ORDER BY item_id ASC
+                   )SQL");
+        qi.bindValue(":id", orderId);
+        if (!qi.exec()) { sendError(sock,"load_medical_orders", qi.lastError().text()); return; }
+
+        QJsonArray items;
+        while (qi.next()) {
+            items.append(QJsonObject{
+                             {"item_id",    qi.value("item_id").toInt()},
+                             {"order_date", qi.value("order_date").toString()},
+                             {"order_time", qi.value("order_time").toString()},
+                             {"content",    qi.value("content").toString()},
+                             {"doctor",     qi.value("doctor_name").toString()},
+                             {"signed_by",  qi.value("signed_by").toString()}
+                         });
+        }
+
+        sendJson(sock, QJsonObject{
+                     {"type","load_medical_orders"},
+                     {"success", true},
+                     {"found", true},
+                     {"order", order},
+                     {"items", items}
+                 });
+    }
+    void Widget::handleSaveMedicalOrders(QTcpSocket *sock, const QJsonObject &obj)
+    {
+        const int patientId = obj.value("patient_id").toInt(-1);
+        const int doctorId  = obj.value("doctor_id").toInt(-1);
+        const int orderIdIn = obj.value("order_id").toInt(0);
+        const QString notes = obj.value("notes").toString();
+        const QJsonArray items = obj.value("items").toArray();
+
+        if (patientId <= 0 || doctorId <= 0) { sendError(sock,"save_medical_orders","missing patient_id/doctor_id"); return; }
+
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isOpen()) { sendError(sock,"save_medical_orders","database not open"); return; }
+        if (!db.transaction()) qWarning() << "[save_medical_orders] begin tx failed";
+
+        int orderId = orderIdIn;
+        QSqlQuery q(db);
+
+        if (orderId <= 0) {
+            q.prepare("INSERT INTO medical_orders(patient_id, doctor_id, notes) VALUES(:p,:d,:n)");
+            q.bindValue(":p", patientId);
+            q.bindValue(":d", doctorId);
+            q.bindValue(":n", notes);
+            if (!q.exec()) { db.rollback(); sendError(sock,"save_medical_orders", q.lastError().text()); return; }
+            orderId = q.lastInsertId().toInt();
+        } else {
+            // 更新 notes
+            q.prepare("UPDATE medical_orders SET notes=:n WHERE order_id=:id AND patient_id=:p");
+            q.bindValue(":n", notes);
+            q.bindValue(":id", orderId);
+            q.bindValue(":p", patientId);
+            if (!q.exec()) { db.rollback(); sendError(sock,"save_medical_orders", q.lastError().text()); return; }
+
+            // 清空旧 items
+            QSqlQuery qd(db);
+            qd.prepare("DELETE FROM medical_order_items WHERE order_id=:id");
+            qd.bindValue(":id", orderId);
+            if (!qd.exec()) { db.rollback(); sendError(sock,"save_medical_orders", qd.lastError().text()); return; }
+        }
+
+        // 插入 items
+        QSqlQuery qi(db);
+        qi.prepare(R"SQL(
+                   INSERT INTO medical_order_items(order_id, order_date, order_time, content, doctor_name, signed_by)
+                   VALUES(:o, :d, :t, :c, :dn, :sb)
+                   )SQL");
+
+        for (const QJsonValue &v : items) {
+            const QJsonObject it = v.toObject();
+            qi.bindValue(":o",  orderId);
+            qi.bindValue(":d",  it.value("order_date").toString());
+            qi.bindValue(":t",  it.value("order_time").toString());
+            qi.bindValue(":c",  it.value("content").toString());
+            qi.bindValue(":dn", it.value("doctor").toString());
+            qi.bindValue(":sb", it.value("signed_by").toString());
+            if (!qi.exec()) { db.rollback(); sendError(sock,"save_medical_orders", qi.lastError().text()); return; }
+        }
+
+        if (!db.commit()) { db.rollback(); sendError(sock,"save_medical_orders","commit failed"); return; }
+        sendJson(sock, {{"type","save_medical_orders"},{"success",true},{"order_id",orderId}});
+    }
+    void Widget::handleLoadAttendanceToday(QTcpSocket *sock, const QJsonObject &obj)
+    {
+        const int doctorId = obj.value("doctor_id").toInt(-1);
+        if (doctorId <= 0) { sendError(sock,"load_attendance_today","missing doctor_id"); return; }
+
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isOpen()) { sendError(sock,"load_attendance_today","database not open"); return; }
+
+        const QString today = QDate::currentDate().toString("yyyy-MM-dd");
+
+        QSqlQuery q(db);
+        q.prepare("SELECT id, clock_in, clock_out, status FROM attendance WHERE doctor_id=:d AND date=:dt LIMIT 1");
+        q.bindValue(":d", doctorId);
+        q.bindValue(":dt", today);
+        if (!q.exec()) { sendError(sock,"load_attendance_today", q.lastError().text()); return; }
+
+        if (!q.next()) {
+            sendJson(sock, {{"type","load_attendance_today"},{"success",true},{"found",false},{"date",today}});
+            return;
+        }
+
+        sendJson(sock, QJsonObject{
+                     {"type","load_attendance_today"},
+                     {"success", true},
+                     {"found", true},
+                     {"date", today},
+                     {"record", QJsonObject{
+                          {"id",       q.value("id").toInt()},
+                          {"clock_in", q.value("clock_in").toString()},
+                          {"clock_out",q.value("clock_out").toString()},
+                          {"status",   q.value("status").toString()}
+                      }}
+                 });
+    }
+    void Widget::handleClockEvent(QTcpSocket *sock, const QJsonObject &obj)
+    {
+        const int doctorId = obj.value("doctor_id").toInt(-1);
+        const QString kind = obj.value("kind").toString(); // "in" / "out"
+        if (doctorId <= 0 || (kind!="in" && kind!="out")) {
+            sendError(sock,"clock_event","missing doctor_id or invalid kind"); return;
+        }
+
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isOpen()) { sendError(sock,"clock_event","database not open"); return; }
+
+        const QString today = QDate::currentDate().toString("yyyy-MM-dd");
+        const QString now   = QTime::currentTime().toString("HH:mm:ss");
+
+        if (!db.transaction()) qWarning() << "[clock_event] begin tx failed";
+
+        int id = 0;
+        QString clockIn, clockOut;
+        {
+            QSqlQuery q(db);
+            q.prepare("SELECT id, clock_in, clock_out FROM attendance WHERE doctor_id=:d AND date=:dt LIMIT 1");
+            q.bindValue(":d", doctorId);
+            q.bindValue(":dt", today);
+            if (!q.exec()) { db.rollback(); sendError(sock,"clock_event", q.lastError().text()); return; }
+            if (q.next()) {
+                id = q.value("id").toInt();
+                clockIn  = q.value("clock_in").toString();
+                clockOut = q.value("clock_out").toString();
+            }
+        }
+
+        if (id == 0) {
+            QSqlQuery ins(db);
+            QString ci = (kind=="in") ? now : QString();
+            QString co = (kind=="out")? now : QString();
+            ins.prepare("INSERT INTO attendance(doctor_id, date, clock_in, clock_out, status) VALUES(:d,:dt,:ci,:co,'present')");
+            ins.bindValue(":d", doctorId);
+            ins.bindValue(":dt", today);
+            ins.bindValue(":ci", ci.isEmpty()? QVariant(QVariant::String):ci);
+            ins.bindValue(":co", co.isEmpty()? QVariant(QVariant::String):co);
+            if (!ins.exec()) { db.rollback(); sendError(sock,"clock_event", ins.lastError().text()); return; }
+            id = ins.lastInsertId().toInt();
+            clockIn  = ci;
+            clockOut = co;
+        } else {
+            QSqlQuery upd(db);
+            if (kind=="in" && clockIn.isEmpty()) {
+                upd.prepare("UPDATE attendance SET clock_in=:t WHERE id=:id");
+                upd.bindValue(":t", now);
+            } else if (kind=="out" && clockOut.isEmpty()) {
+                upd.prepare("UPDATE attendance SET clock_out=:t WHERE id=:id");
+                upd.bindValue(":t", now);
+            } else {
+                // 重复打同一类卡，直接返回成功
+                sendJson(sock, {{"type","clock_event"},{"success",true},{"message","already set"},{"id",id}});
+                db.rollback(); // 不需要事务
+                return;
+            }
+            upd.bindValue(":id", id);
+            if (!upd.exec()) { db.rollback(); sendError(sock,"clock_event", upd.lastError().text()); return; }
+            if (kind=="in") clockIn = now; else clockOut = now;
+        }
+
+        if (!db.commit()) { db.rollback(); sendError(sock,"clock_event","commit failed"); return; }
+
+        sendJson(sock, QJsonObject{
+                     {"type","clock_event"},
+                     {"success", true},
+                     {"id", id},
+                     {"date", today},
+                     {"record", QJsonObject{{"clock_in", clockIn}, {"clock_out", clockOut}}}
+                 });
+    }
+    void Widget::handleSubmitLeave(QTcpSocket *sock, const QJsonObject &obj)
+    {
+        const int doctorId = obj.value("doctor_id").toInt(-1);
+        const QString leaveType = obj.value("leave_type").toString(); // 病假/事假/年假
+        const QString startDate = obj.value("start_date").toString();
+        const QString endDate   = obj.value("end_date").toString();
+        const QString reason    = obj.value("reason").toString();
+
+        if (doctorId<=0 || leaveType.isEmpty() || startDate.isEmpty() || endDate.isEmpty()) {
+            sendError(sock,"submit_leave","missing fields"); return;
+        }
+
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isOpen()) { sendError(sock,"submit_leave","database not open"); return; }
+
+        QSqlQuery q(db);
+        q.prepare(R"SQL(
+                  INSERT INTO leaves(doctor_id, leave_type, start_date, end_date, reason, status)
+                  VALUES(:d,:t,:s,:e,:r,'pending')
+                  )SQL");
+        q.bindValue(":d", doctorId);
+        q.bindValue(":t", leaveType);
+        q.bindValue(":s", startDate);
+        q.bindValue(":e", endDate);
+        q.bindValue(":r", reason);
+
+        if (!q.exec()) { sendError(sock,"submit_leave", q.lastError().text()); return; }
+
+        sendJson(sock, {{"type","submit_leave"},{"success",true},{"leave_id", q.lastInsertId().toInt()}});
+    }
+
+    void Widget::handleLoadLeaveRecords(QTcpSocket *sock, const QJsonObject &obj)
+    {
+        const int doctorId = obj.value("doctor_id").toInt(-1);
+        if (doctorId<=0) { sendError(sock,"load_leave_records","missing doctor_id"); return; }
+
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isOpen()) { sendError(sock,"load_leave_records","database not open"); return; }
+
+        QSqlQuery q(db);
+        if (!q.prepare(R"SQL(
+                       SELECT leave_id, leave_type, start_date, end_date, reason, status, created_at
+                       FROM leaves
+                       WHERE doctor_id=:d
+                       ORDER BY created_at DESC, leave_id DESC
+                       )SQL")) { sendError(sock,"load_leave_records","prepare failed"); return; }
+        q.bindValue(":d", doctorId);
+        if (!q.exec()) { sendError(sock,"load_leave_records", q.lastError().text()); return; }
+
+        QJsonArray arr;
+        while (q.next()) {
+            arr.append(QJsonObject{
+                           {"leave_id",   q.value("leave_id").toInt()},
+                           {"leave_type", q.value("leave_type").toString()},
+                           {"start_date", q.value("start_date").toString()},
+                           {"end_date",   q.value("end_date").toString()},
+                           {"reason",     q.value("reason").toString()},
+                           {"status",     q.value("status").toString()},   // pending/approved/rejected
+                           {"created_at", q.value("created_at").toString()}
+                       });
+        }
+
+        sendJson(sock, QJsonObject{
+                     {"type","load_leave_records"},
+                     {"success", true},
+                     {"count", static_cast<int>(arr.size())},
+                     {"records", arr}
+                 });
+    }
+
+
+
+    // weiji //
+    // shang mian keyi jia, if / else if
+    // widget.cpp  (服务器)
+    void Widget::handlecurrentDataDoctor(QTcpSocket *sock, const QJsonObject &obj)
+    {
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isValid() || !db.isOpen()) {
+            sendError(sock, "currentDataDoctor", "database not open");
+            return;
+        }
+
+        const int accountId = obj.value("account_id").toInt(-1);
+        const int doctorId  = obj.value("doctor_id").toInt(-1);
+
+        QSqlQuery q(db);
+        if (accountId > 0) {
+            // 通过账户查医生
+            static const char *SQL_BY_ACCOUNT = R"SQL(
+                                                SELECT a.account_id, a.username, a.role, a.is_active,
+                                                d.doctor_id, d.name, d.title, d.department_id,
+                                                dep.name AS department_name,
+                                                COALESCE(d.specialty,'')      AS specialty,
+                                                COALESCE(d.experience,'')     AS experience,
+                                                d.consultation_fee,
+                                                d.is_online
+                                                FROM accounts a
+                                                JOIN doctors d       ON d.doctor_id       = a.doctor_id
+                                                LEFT JOIN departments dep ON dep.department_id = d.department_id
+                                                WHERE a.account_id = :aid AND a.role = 'doctor'
+                                                LIMIT 1
+                                                )SQL";
+            if (!q.prepare(SQL_BY_ACCOUNT)) { sendError(sock,"currentDataDoctor","prepare failed"); return; }
+            q.bindValue(":aid", accountId);
+        } else if (doctorId > 0) {
+            // 直接按医生ID查
+            static const char *SQL_BY_DOCTOR = R"SQL(
+                                               SELECT NULL AS account_id, NULL AS username, 'doctor' AS role, 1 AS is_active,
+                                               d.doctor_id, d.name, d.title, d.department_id,
+                                               dep.name AS department_name,
+                                               COALESCE(d.specialty,'')      AS specialty,
+                                               COALESCE(d.experience,'')     AS experience,
+                                               d.consultation_fee,
+                                               d.is_online
+                                               FROM doctors d
+                                               LEFT JOIN departments dep ON dep.department_id = d.department_id
+                                               WHERE d.doctor_id = :did
+                                               LIMIT 1
+                                               )SQL";
+            if (!q.prepare(SQL_BY_DOCTOR)) { sendError(sock,"currentDataDoctor","prepare failed"); return; }
+            q.bindValue(":did", doctorId);
+        } else {
+            sendError(sock, "currentDataDoctor", "missing account_id or doctor_id");
+            return;
+        }
+
+        if (!q.exec()) { sendError(sock,"currentDataDoctor", q.lastError().text()); return; }
+        if (!q.next()) { sendError(sock,"currentDataDoctor","not found"); return; }
+
+        QJsonObject doctor{
+            {"account_id",       q.value("account_id").isNull() ? QJsonValue() : QJsonValue(q.value("account_id").toInt())},
+                {"username",         q.value("username").toString()},
+                {"role",             q.value("role").toString()},
+                {"is_active",        q.value("is_active").toInt()!=0},
+
+                {"doctor_id",        q.value("doctor_id").toInt()},
+                {"name",             q.value("name").toString()},
+                {"title",            q.value("title").toString()},
+                {"department_id",    q.value("department_id").toInt()},
+                {"department",       q.value("department_name").toString()},
+                {"specialty",        q.value("specialty").toString()},
+                {"experience",       q.value("experience").toString()},
+                {"consultation_fee", q.value("consultation_fee").toDouble()},
+                {"is_online",        q.value("is_online").toInt()!=0}
+            };
+
+            sendJson(sock, QJsonObject{
+                         {"type",    "currentDataDoctor"},
+                         {"success", true},
+                         {"doctor",  doctor}
+                     });
+        }
+        void Widget::handleUpdateDoctorProfile(QTcpSocket *sock, const QJsonObject &obj)
+        {
+            const int did = obj.value("doctor_id").toInt(-1);
+            if (did <= 0) { sendError(sock,"update_doctor_profile","missing doctor_id"); return; }
+
+            // 允许更新的字段
+            // 注意：title 受 CHECK 约束；is_online 只能 0/1；fee >= 0
+            const QMap<QString, QString> allow {
+                {"title",            "title"},            // 主任医师/副主任医师/主治医师/住院医师/医师
+                {"department_id",    "department_id"},
+                {"specialty",        "specialty"},
+                {"experience",       "experience"},
+                {"consultation_fee", "consultation_fee"},
+                {"is_online",        "is_online"}
+            };
+
+            QStringList sets;
+            QMap<QString,QVariant> binds;
+
+            auto titleOk = [](const QString &t){
+                static const QStringList k = {"主任医师","副主任医师","主治医师","住院医师","医师"};
+                return k.contains(t);
+            };
+
+            for (auto it = allow.constBegin(); it != allow.constEnd(); ++it) {
+                const QString k = it.key();
+                if (!obj.contains(k)) continue;
+
+                if (k=="title") {
+                    const QString t = obj.value(k).toString().trimmed();
+                    if (!titleOk(t)) continue;
+                    binds[":"+k] = t;
+                } else if (k=="is_online") {
+                    const int v = obj.value(k).toInt(0);
+                    binds[":"+k] = (v?1:0);
+                } else if (k=="consultation_fee") {
+                    double fee = obj.value(k).toDouble(-1.0);
+                    if (fee < 0.0) fee = 0.0;
+                    binds[":"+k] = fee;
+                } else if (k=="department_id") {
+                    const int dep = obj.value(k).toInt(-1);
+                    if (dep <= 0) continue;
+                    binds[":"+k] = dep;
+                } else {
+                    binds[":"+k] = obj.value(k).toVariant();
+                }
+                sets << QString("%1=:%2").arg(it.value(), k);
+            }
+
+            if (sets.isEmpty()) { sendError(sock,"update_doctor_profile","no valid fields"); return; }
+
+            QSqlDatabase db = QSqlDatabase::database();
+            if (!db.isOpen()) { sendError(sock,"update_doctor_profile","database not open"); return; }
+            if (!db.transaction()) qWarning() << "[update_doctor_profile] begin tx failed";
+
+            QSqlQuery q(db);
+            const QString sql = "UPDATE doctors SET " + sets.join(", ") + " WHERE doctor_id=:id";
+            if (!q.prepare(sql)) { db.rollback(); sendError(sock,"update_doctor_profile","prepare failed"); return; }
+            for (auto it = binds.constBegin(); it != binds.constEnd(); ++it) q.bindValue(it.key(), it.value());
+            q.bindValue(":id", did);
+
+            if (!q.exec()) { db.rollback(); sendError(sock,"update_doctor_profile", q.lastError().text()); return; }
+            if (!db.commit()) { db.rollback(); sendError(sock,"update_doctor_profile","commit failed"); return; }
+
+            sendJson(sock, QJsonObject{
+                         {"type","update_doctor_profile"},
+                         {"success", true},
+                         {"message","已保存"}
+                     });
+        }
+        void Widget::handleLoadMedicineData(QTcpSocket *sock, const QJsonObject &obj)
+        {
+
+            QSqlDatabase db = QSqlDatabase::database();
+            if (!db.isValid() || !db.isOpen()) {
+                qWarning() << "[load_medicine_data] database not open";
+                sendJson(sock, {
+                             {"type", "load_medicine_data_ok"},
+                             {"success", false},
+                             {"error",  "database not open"}
+                         });
+                return;
+            }
+
+            // 只查 UI 需要的列（与前端字段对齐）
+            static const char *kSql = R"SQL(
+                                      SELECT
+                                      medicine_id,
+                                      name,
+                                      description,
+                                      type,
+                                      is_prescription,
+                                      price,
+                                      specifications,
+                                      manufacturer,
+                                      effects,
+                                      dosage,
+                                      icon_color
+                                      FROM medicines
+                                      ORDER BY name ASC
+                                      )SQL";
+
+            QSqlQuery q(db);
+            if (!q.prepare(kSql)) {
+                const QString err = q.lastError().text();
+                qWarning() << "[load_medicine_data] prepare failed:" << err;
+                sendJson(sock, {
+                             {"type", "load_medicine_data_ok"},
+                             {"success", false},
+                             {"error",  QString("prepare failed: %1").arg(err)}
+                         });
+                return;
+            }
+
+            if (!q.exec()) {
+                const QString err = q.lastError().text();
+                qWarning() << "[load_medicine_data] exec failed:" << err;
+                sendJson(sock, {
+                             {"type", "load_medicine_data_ok"},
+                             {"success", false},
+                             {"error",  QString("exec failed: %1").arg(err)}
+                         });
+                return;
+            }
+
+            QJsonArray arr;
+            // arr.reserve(q.size() > 0 ? q.size() : 16);
+
+            while (q.next()) {
+                // 注意：不要用变量名"type"遮蔽 JSON 的 key，这里用 drugType
+                const int     mid          = q.value("medicine_id").toInt();
+                const QString name         = q.value("name").toString();
+                const QString description  = q.value("description").toString();
+                const QString drugType     = q.value("type").toString();
+                const bool    isPrescription = q.value("is_prescription").toInt() != 0;
+                const double  price        = q.value("price").toDouble();
+                const QString specs        = q.value("specifications").toString();
+                const QString manufacturer = q.value("manufacturer").toString();
+                const QString effects      = q.value("effects").toString();
+                const QString dosage       = q.value("dosage").toString();
+                const QString iconColor    = q.value("icon_color").toString();
+
+                QJsonObject item{
+                    {"medicine_id",    mid},                // ✅ 新增这个
+                    {"name",           name},
+                    {"description",    description},
+                    {"type",           drugType},
+                    {"is_prescription",isPrescription},
+                    {"price",          price},
+                    {"specifications", specs},
+                    {"manufacturer",   manufacturer},
+                    {"effects",        effects},
+                    {"dosage",         dosage},
+                    {"icon_color",     iconColor}
+                };
+                arr.append(item);
+
+                qDebug().noquote() << QString("药品: %1 | 类型: %2 | 处方: %3 | 价格: %4 | 规格: %5")
+                                      .arg(name, drugType, isPrescription ? "是" : "否")
+                                      .arg(price)
+                                      .arg(specs);
+            }
+
+            QJsonObject resp{
+                {"type",     "load_medicine_data_ok"},
+                {"success",  true},
+                {"count",    static_cast<int>(arr.size())},
+                {"medicines", arr}
+            };
+            sendJson(sock, resp);
+        }
+        //
+        // widget.cpp  (server)
+        void Widget::handledoctorContactsLoaded(QTcpSocket *sock, const QJsonObject &obj)
+        {
+            QSqlDatabase db = QSqlDatabase::database();
+            if (!db.isValid() || !db.isOpen()) {
+                sendError(sock, "doctorContactsLoaded", "database not open");
+                return;
+            }
+
+            const int patientId = obj.value("patient_id").toInt(-1);
+            const int doctorId  = obj.value("doctor_id").toInt(-1);
+
+            QSqlQuery q(db);
+            QString side;   // "patient" or "doctor"
+            if (patientId > 0) {
+                side = "patient";
+                static const char* SQL_PATIENT_SIDE = R"SQL(
+                                                      SELECT
+                                                      c.conversation_id,
+                                                      d.doctor_id,
+                                                      d.name        AS doctor_name,
+                                                      d.title       AS title,
+                                                      dep.name      AS department,
+                                                      (
+                                                      SELECT m.content
+                                                      FROM messages m
+                                                      WHERE m.conversation_id = c.conversation_id
+                                                      ORDER BY m.created_at DESC, m.message_id DESC
+                                                      LIMIT 1
+                                                      ) AS last_message,
+                                                      (
+                                                      SELECT m.created_at
+                                                      FROM messages m
+                                                      WHERE m.conversation_id = c.conversation_id
+                                                      ORDER BY m.created_at DESC, m.message_id DESC
+                                                      LIMIT 1
+                                                      ) AS last_time
+                                                      FROM conversations c
+                                                      JOIN doctors d           ON d.doctor_id = c.doctor_id
+                                                      LEFT JOIN departments dep ON dep.department_id = d.department_id
+                                                      WHERE c.patient_id = :p
+                                                      ORDER BY COALESCE(last_time, c.created_at) DESC
+                                                      )SQL";
+                if (!q.prepare(SQL_PATIENT_SIDE)) { sendError(sock,"doctorContactsLoaded","prepare failed"); return; }
+                q.bindValue(":p", patientId);
+            } else if (doctorId > 0) {
+                side = "doctor";
+                static const char* SQL_DOCTOR_SIDE = R"SQL(
+                                                     SELECT
+                                                     c.conversation_id,
+                                                     p.patient_id,
+                                                     p.name        AS patient_name,
+                                                     p.mobile      AS patient_mobile,
+                                                     (
+                                                     SELECT m.content
+                                                     FROM messages m
+                                                     WHERE m.conversation_id = c.conversation_id
+                                                     ORDER BY m.created_at DESC, m.message_id DESC
+                                                     LIMIT 1
+                                                     ) AS last_message,
+                                                     (
+                                                     SELECT m.created_at
+                                                     FROM messages m
+                                                     WHERE m.conversation_id = c.conversation_id
+                                                     ORDER BY m.created_at DESC, m.message_id DESC
+                                                     LIMIT 1
+                                                     ) AS last_time
+                                                     FROM conversations c
+                                                     JOIN patients p ON p.patient_id = c.patient_id
+                                                     WHERE c.doctor_id = :d
+                                                     ORDER BY COALESCE(last_time, c.created_at) DESC
+                                                     )SQL";
+                if (!q.prepare(SQL_DOCTOR_SIDE)) { sendError(sock,"doctorContactsLoaded","prepare failed"); return; }
+                q.bindValue(":d", doctorId);
+            } else {
+                sendError(sock, "doctorContactsLoaded", "missing patient_id or doctor_id");
+                return;
+            }
+
+            if (!q.exec()) { sendError(sock,"doctorContactsLoaded", q.lastError().text()); return; }
+
+            QJsonArray contacts;
+            while (q.next()) {
+                if (side == "patient") {
+                    contacts.append(QJsonObject{
+                                        {"conversation_id", q.value("conversation_id").toInt()},
+                                        {"doctor_id",       q.value("doctor_id").toInt()},
+                                        {"doctor_name",     q.value("doctor_name").toString()},
+                                        {"title",           q.value("title").toString()},
+                                        {"department",      q.value("department").toString()},
+                                        {"last_message",    q.value("last_message").toString()},
+                                        {"last_time",       q.value("last_time").toString()}
+                                    });
+                } else {
+                    contacts.append(QJsonObject{
+                                        {"conversation_id", q.value("conversation_id").toInt()},
+                                        {"patient_id",      q.value("patient_id").toInt()},
+                                        {"patient_name",    q.value("patient_name").toString()},
+                                        {"patient_mobile",  q.value("patient_mobile").toString()},
+                                        {"last_message",    q.value("last_message").toString()},
+                                        {"last_time",       q.value("last_time").toString()}
+                                    });
+                }
+            }
+
+            sendJson(sock, QJsonObject{
+                         {"type",    "doctorContactsLoaded"},
+                         {"success", true},
+                         {"side",    side},
+                         {"count",   static_cast<int>(contacts.size())},
+                         {"contacts",contacts}
+                     });
+        }
+        void Widget::handlechatHistoryLoaded(QTcpSocket *sock, const QJsonObject &obj)
+        {
+            QSqlDatabase db = QSqlDatabase::database();
+            if (!db.isValid() || !db.isOpen()) { sendError(sock,"chatHistoryLoaded","database not open"); return; }
+
+            int conversationId = obj.value("conversation_id").toInt(-1);
+            const int patientId = obj.value("patient_id").toInt(-1);
+            const int doctorId  = obj.value("doctor_id").toInt(-1);
+            const int limit     = std::max(1, obj.value("limit").toInt(200));   // 默认 200
+
+            // 若没给 conversation_id，尝试按 p+d 找或创建
+            if (conversationId <= 0) {
+                if (patientId <= 0 || doctorId <= 0) { sendError(sock,"chatHistoryLoaded","missing conversation_id or (patient_id,doctor_id)"); return; }
+
+                QSqlQuery qc(db);
+                qc.prepare("SELECT conversation_id FROM conversations WHERE patient_id=:p AND doctor_id=:d LIMIT 1");
+                qc.bindValue(":p", patientId);
+                qc.bindValue(":d", doctorId);
+                if (!qc.exec()) { sendError(sock,"chatHistoryLoaded", qc.lastError().text()); return; }
+                if (qc.next()) {
+                    conversationId = qc.value(0).toInt();
+                } else {
+                    QSqlQuery ins(db);
+                    if (!ins.prepare("INSERT INTO conversations(patient_id, doctor_id, created_at) VALUES(:p,:d,CURRENT_TIMESTAMP)")) {
+                        sendError(sock,"chatHistoryLoaded","prepare insert conv failed"); return;
+                    }
+                    ins.bindValue(":p", patientId);
+                    ins.bindValue(":d", doctorId);
+                    if (!ins.exec()) { sendError(sock,"chatHistoryLoaded", ins.lastError().text()); return; }
+                    conversationId = ins.lastInsertId().toInt();
+                }
+            }
+
+            QSqlQuery q(db);
+            if (!q.prepare(R"SQL(
+                           SELECT message_id, sender_type, content, created_at
+                           FROM messages
+                           WHERE conversation_id = :cid
+                           ORDER BY created_at ASC, message_id ASC
+                           LIMIT :lim
+                           )SQL")) { sendError(sock,"chatHistoryLoaded","prepare failed"); return; }
+            q.bindValue(":cid", conversationId);
+            q.bindValue(":lim", limit);
+
+            if (!q.exec()) { sendError(sock,"chatHistoryLoaded", q.lastError().text()); return; }
+
+            QJsonArray msgs;
+            while (q.next()) {
+                msgs.append(QJsonObject{
+                                {"message_id",  q.value("message_id").toInt()},
+                                {"sender_type", q.value("sender_type").toString()},   // "doctor"/"patient"
+                                {"content",     q.value("content").toString()},
+                                {"created_at",  q.value("created_at").toString()}
+                            });
+            }
+
+            sendJson(sock, QJsonObject{
+                         {"type",            "chatHistoryLoaded"},
+                         {"success",         true},
+                         {"conversation_id", conversationId},
+                         {"count",           static_cast<int>(msgs.size())},
+                         {"messages",        msgs}
+                     });
+        }
+        void Widget::handlemessageSent(QTcpSocket *sock, const QJsonObject &obj)
+        {
+            QSqlDatabase db = QSqlDatabase::database();
+            if (!db.isValid() || !db.isOpen()) { sendError(sock,"messageSent","database not open"); return; }
+
+            int conversationId = obj.value("conversation_id").toInt(-1);
+            const int patientId = obj.value("patient_id").toInt(-1);
+            const int doctorId  = obj.value("doctor_id").toInt(-1);
+            QString senderType  = obj.value("sender_type").toString().trimmed().toLower(); // "doctor"/"patient"
+            const QString content = obj.value("content").toString();
+
+            if (content.trimmed().isEmpty()) { sendError(sock,"messageSent","empty content"); return; }
+            if (senderType != "doctor" && senderType != "patient") senderType = "patient";
+
+            if (conversationId <= 0) {
+                if (patientId <= 0 || doctorId <= 0) { sendError(sock,"messageSent","missing conversation_id or (patient_id,doctor_id)"); return; }
+                QSqlQuery qc(db);
+                qc.prepare("SELECT conversation_id FROM conversations WHERE patient_id=:p AND doctor_id=:d LIMIT 1");
+                qc.bindValue(":p", patientId);
+                qc.bindValue(":d", doctorId);
+                if (!qc.exec()) { sendError(sock,"messageSent", qc.lastError().text()); return; }
+                if (qc.next()) conversationId = qc.value(0).toInt();
+                else {
+                    QSqlQuery ins(db);
+                    ins.prepare("INSERT INTO conversations(patient_id, doctor_id, created_at) VALUES(:p,:d,CURRENT_TIMESTAMP)");
+                    ins.bindValue(":p", patientId);
+                    ins.bindValue(":d", doctorId);
+                    if (!ins.exec()) { sendError(sock,"messageSent", ins.lastError().text()); return; }
+                    conversationId = ins.lastInsertId().toInt();
+                }
+            }
+
+            QSqlQuery insm(db);
+            if (!insm.prepare(R"SQL(
+                              INSERT INTO messages(conversation_id, sender_type, content, created_at)
+                              VALUES(:c, :s, :t, CURRENT_TIMESTAMP)
+                              )SQL")) { sendError(sock,"messageSent","prepare insert message failed"); return; }
+            insm.bindValue(":c", conversationId);
+            insm.bindValue(":s", senderType);
+            insm.bindValue(":t", content);
+
+            if (!insm.exec()) { sendError(sock,"messageSent", insm.lastError().text()); return; }
+
+            int mid = insm.lastInsertId().toInt();
+
+            // 回显新消息
+            sendJson(sock, QJsonObject{
+                         {"type",            "messageSent"},
+                         {"success",         true},
+                         {"conversation_id", conversationId},
+                         {"message", QJsonObject{
+                              {"message_id",  mid},
+                              {"sender_type", senderType},
+                              {"content",     content},
+                              {"created_at",  QDateTime::currentDateTime().toString(Qt::ISODate)}
+                          }}
+                     });
+        }
+
+        //
+        void Widget::handleLoadOrderDetails(QTcpSocket *sock, const QJsonObject &obj)
+        {
+            QSqlDatabase db = QSqlDatabase::database();
+            if (!db.isValid() || !db.isOpen()) {
+                qWarning() << "[loadOrderDetails] database not open";
+                sendJson(sock, {
+                             {"type", "loadOrderDetails"},
+                             {"success", false},
+                             {"error",  "database not open"}
+                         });
+                return;
+            }
+
+            // 可选：按订单号筛选；如果 obj 里带了 "order_id"（int），就按该订单查单条
+            const bool hasFilter = obj.contains("order_id");
+            const int  orderId   = obj.value("order_id").toInt(); // 不带就为 0，不影响
+
+            // 只查 UI 需要的列（与你 UI 字段一一对应）
+            // 备注：%1 位置拼接 WHERE 子句
+            static const char *kSqlTmpl = R"SQL(
+                                          SELECT
+                                          o.order_id,
+                                          ('PO' || strftime('%Y%m%d', o.created_at) || printf('%06d', o.order_id)) AS order_code,
+                                          o.created_at                  AS create_time,
+                                          p.name                        AS patient_name,
+                                          dep.name                      AS department,
+                                          d.name                        AS doctor_name,
+                                          COALESCE(SUM(CASE WHEN oi.item_name = '挂号费'    THEN oi.amount END), 0) AS fee_reg,
+                                          COALESCE(SUM(CASE WHEN oi.item_name = '诊查费'    THEN oi.amount END), 0) AS fee_consult,
+                                          COALESCE(SUM(CASE WHEN oi.item_name LIKE '药品-%' THEN oi.amount END), 0) AS fee_drug,
+                                          COALESCE(SUM(CASE WHEN oi.item_name LIKE '检查%'  THEN oi.amount END), 0) AS fee_exam,
+                                          o.discount                                           AS discount_store,
+                                          o.total_amount                                       AS total_amount_store,
+                                          (o.total_amount - o.discount)                        AS payable
+                                          FROM orders o
+                                          JOIN patients       p   ON p.patient_id      = o.patient_id
+                                          LEFT JOIN departments dep ON dep.department_id = o.department_id
+                                          LEFT JOIN doctors    d   ON d.doctor_id      = o.doctor_id
+                                          LEFT JOIN order_items oi ON oi.order_id      = o.order_id
+                                          %1
+                                          GROUP BY
+                                          o.order_id, o.created_at, p.name, dep.name, d.name, o.discount, o.total_amount
+                                          ORDER BY o.created_at DESC
+                                          )SQL";
+
+            const QString whereClause = hasFilter ? QStringLiteral("WHERE o.order_id = :oid") : QString();
+            const QString sql = QString::fromUtf8(kSqlTmpl).arg(whereClause);
+
+            QSqlQuery q(db);
+            if (!q.prepare(sql)) {
+                const QString err = q.lastError().text();
+                qWarning() << "[loadOrderDetails] prepare failed:" << err;
+                sendJson(sock, {
+                             {"type", "loadOrderDetails"},
+                             {"success", false},
+                             {"error",  QString("prepare failed: %1").arg(err)}
+                         });
+                return;
+            }
+            if (hasFilter) q.bindValue(":oid", orderId);
+
+            if (!q.exec()) {
+                const QString err = q.lastError().text();
+                qWarning() << "[loadOrderDetails] exec failed:" << err;
+                sendJson(sock, {
+                             {"type", "loadOrderDetails"},
+                             {"success", false},
+                             {"error",  QString("exec failed: %1").arg(err)}
+                         });
+                return;
+            }
+
+            QJsonArray orders;
+            // orders.reserve(q.size() > 0 ? q.size() : 8);
+
+            while (q.next()) {
+                const int     oid          = q.value("order_id").toInt();
+                const QString orderCode    = q.value("order_code").toString();   // PO20230830xxxxxx
+                const QString createTime   = q.value("create_time").toString();  // 建议用 ISO 字符串
+                const QString patientName  = q.value("patient_name").toString();
+                const QString department   = q.value("department").toString();
+                const QString doctorName   = q.value("doctor_name").toString();
+
+                const double feeReg        = q.value("fee_reg").toDouble();
+                const double feeConsult    = q.value("fee_consult").toDouble();
+                const double feeDrug       = q.value("fee_drug").toDouble();
+                const double feeExam       = q.value("fee_exam").toDouble();
+
+                const double discountStore = q.value("discount_store").toDouble();     // 库里为非负
+                const double discountOut   = -discountStore;                           // UI 需要负号展示
+                const double payable       = q.value("payable").toDouble();            // sum - discount
+
+                QJsonObject fee{
+                    {"挂号费", feeReg},
+                    {"诊查费", feeConsult},
+                    {"药品费", feeDrug},
+                    {"检查费", feeExam}
+                };
+
+                QJsonObject item{
+                    {"order_id",      oid},
+                    {"order_code",    orderCode},
+                    {"create_time",   createTime},
+                    {"patient_name",  patientName},
+                    {"department",    department},
+                    {"doctor_name",   doctorName},
+                    {"fee",           fee},
+                    {"discount",      discountOut},      // 负值
+                    {"total_amount",  payable}           // 应付 = 合计 - 折扣
+                };
+
+                orders.append(item);
+
+                qDebug().noquote() << QString("[Order] %1 %2 | %3/%4 | 应付:%5 折扣:%6")
+                                      .arg(orderCode, createTime, patientName, department)
+                                      .arg(payable).arg(discountOut);
+            }
+
+            sendJson(sock, {
+                         {"type",     "loadOrderDetails"},   // 注意：响应仍然用同一个 type，满足你在 Widget 里判断
+                         {"success",  true},
+                         {"count",    static_cast<int>(orders.size())},
+                         {"orders",   orders}
+                     });
+        }
+
+        void Widget::handleloadAvailableDoctors(QTcpSocket *sock, const QJsonObject &obj)
+        {
+            Q_UNUSED(obj);
+
+            QSqlDatabase db = QSqlDatabase::database();
+            if (!db.isValid() || !db.isOpen()) {
+                qWarning() << "[loadAvailableDoctors] database not open";
+                sendJson(sock, {
+                             {"type", "loadAvailableDoctors"},
+                             {"success", false},
+                             {"error",  "database not open"}
+                         });
+                return;
+            }
+
+            QSqlQuery q(db);
+            static const char* sql = R"SQL(
+                                     SELECT d.doctor_id,
+                                     d.name,
+                                     d.title,
+                                     dep.name AS department,
+                                     d.specialty
+                                     FROM doctors d
+                                     JOIN departments dep ON dep.department_id = d.department_id
+                                     ORDER BY d.doctor_id
+                                     )SQL";
+
+            if (!q.prepare(sql) || !q.exec()) {
+                qWarning() << "[doctors] sql error:" << q.lastError().text();
+                sendJson(sock, {
+                             {"type", "loadAvailableDoctors"},
+                             {"success", false},
+                             {"error",  q.lastError().text()}
+                         });
+                return;
+            }
+
+            QJsonArray doctors;
+            // doctors.reserve(q.size() > 0 ? q.size() : 8);
+
+            while (q.next()) {
+                const int      doctorId   = q.value("doctor_id").toInt();
+                const QString  name       = q.value("name").toString();
+                const QString  pureTitle  = q.value("title").toString();
+                const QString  department = q.value("department").toString();
+                const QString  title      = pureTitle + " | " + department;   // 例："主任医师 | 心血管内科"
+                const QString  specialty  = q.value("specialty").toString();  // 例："擅长: ..."
+
+                QJsonObject item{
+                    {"doctor_id",  doctorId},
+                    {"name",       name},
+                    {"title",      title},
+                    {"department", department},
+                    {"specialty",  specialty},
+                    // 预留：前端若已有时段结构，这里给一个空数组占位（后续可由另一接口填充）
+                    {"time_slots", QJsonArray{}}
+                };
+                doctors.append(item);
+
+                qDebug().noquote() << QString("[Doctor] #%1 %2 %3 %4")
+                                      .arg(doctorId)
+                                      .arg(name, title, specialty);
+            }
+
+            sendJson(sock, {
+                         {"type",    "loadAvailableDoctors"},   // 按你的要求：响应同样用这个 type
+                         {"success", true},
+                         {"count",   static_cast<int>(doctors.size())},
+                         {"doctors", doctors}
+                     });
+        }
+
+        void Widget::handlesubmitAppointmentRequest(QTcpSocket *sock, const QJsonObject &obj)
+        {
+            // 1) 参数校验（与 UI 对齐）
+            const int patientId = obj.value("patient_id").toInt(-1);
+            const int doctorId  = obj.value("doctor_id").toInt(-1);
+            const int slotId    = obj.value("slot_id").toInt(-1);
+            const QString desc  = obj.value("disease_description").toString();
+
+            if (patientId < 0 || doctorId < 0 || slotId < 0) {
+                sendJson(sock, {
+                             {"type",    "submitAppointmentRequest"},
+                             {"success", false},
+                             {"error",   "invalid arguments: require patient_id, doctor_id, slot_id"}
+                         });
+                return;
+            }
+
+            // 2) 打开数据库
+            QSqlDatabase db = QSqlDatabase::database();
+            if (!db.isValid() || !db.isOpen()) {
+                qWarning() << "[submitAppointmentRequest] database not open";
+                sendJson(sock, {
+                             {"type",    "submitAppointmentRequest"},
+                             {"success", false},
+                             {"error",   "database not open"}
+                         });
+                return;
+            }
+
+            // 3) 插入预约（只写 UI 需要的列；created_at 可由表默认值填写）
+            static const char *kSql = R"SQL(
+                                      INSERT INTO appointments
+                                      (patient_id, doctor_id, slot_id, disease_description)
+                                      VALUES
+                                      (:patient_id, :doctor_id, :slot_id, :disease_description)
+                                      )SQL";
+
+            QSqlQuery q(db);
+
+            // 可选：事务，便于后续扩展扣减号源等
+            if (!db.transaction()) {
+                qWarning() << "[submitAppointmentRequest] begin tx failed:" << db.lastError().text();
+                // 不中断，继续尝试执行（有的驱动不需要显式事务）
+            }
+
+            if (!q.prepare(kSql)) {
+                const QString err = q.lastError().text();
+                qWarning() << "[submitAppointmentRequest] prepare failed:" << err;
+                sendJson(sock, {
+                             {"type",    "submitAppointmentRequest"},
+                             {"success", false},
+                             {"error",   QString("prepare failed: %1").arg(err)}
+                         });
+                if (db.isOpen()) db.rollback();
+                return;
+            }
+
+            q.bindValue(":patient_id", patientId);
+            q.bindValue(":doctor_id",  doctorId);
+            q.bindValue(":slot_id",    slotId);
+            q.bindValue(":disease_description", desc);
+
+            if (!q.exec()) {
+                const QString err = q.lastError().text();
+                qWarning() << "[submitAppointmentRequest] exec failed:" << err;
+                sendJson(sock, {
+                             {"type",    "submitAppointmentRequest"},
+                             {"success", false},
+                             {"error",   QString("exec failed: %1").arg(err)}
+                         });
+                if (db.isOpen()) db.rollback();
+                return;
+            }
+
+            const QVariant newId = q.lastInsertId();   // SQLite/MySQL 可用；部分驱动可能返回无效
+            if (!db.commit()) {
+                qWarning() << "[submitAppointmentRequest] commit failed:" << db.lastError().text();
+                // 即便提交失败，也给出错误
+                sendJson(sock, {
+                             {"type",    "submitAppointmentRequest"},
+                             {"success", false},
+                             {"error",   QString("commit failed: %1").arg(db.lastError().text())}
+                         });
+                return;
+            }
+
+            // 4) 响应（type 仍然是 submitAppointmentRequest，满足你在 Widget 里判断）
+            QJsonObject resp{
+                {"type",          "submitAppointmentRequest"},
+                {"success",       true},
+                {"appointment_id", newId.isValid() ? newId.toLongLong() : -1},
+                    {"patient_id",    patientId},
+                    {"doctor_id",     doctorId},
+                    {"slot_id",       slotId}
+                    // 需要的话可回显 desc；通常不必
+                    // {"disease_description", desc}
+                };
+                sendJson(sock, resp);
+            }
+
+            void Widget::handleloadDoctorList(QTcpSocket *sock, const QJsonObject &obj)
+            {
+                Q_UNUSED(obj);
+
+                QSqlDatabase db = QSqlDatabase::database();
+                if (!db.isValid() || !db.isOpen()) {
+                    qWarning() << "[loadDoctorList] database not open";
+                    sendJson(sock, {
+                                 {"type", "loadDoctorList"},
+                                 {"success", false},
+                                 {"error",  "database not open"}
+                             });
+                    return;
+                }
+
+                // 只查 UI 需要的列（与前端字段对齐）
+                static const char* SQL_DOCTORS_FOR_UI =
+                        "SELECT "
+                        "  d.doctor_id, "
+                        "  d.name, "
+                        "  d.title, "
+                        "  dep.name AS department_name, "
+                        "  COALESCE(d.specialty, '')   AS specialty, "
+                        "  COALESCE(d.experience, '')  AS experience "
+                        "FROM doctors d "
+                        "JOIN departments dep ON dep.department_id = d.department_id "
+                        "ORDER BY d.doctor_id;";
+
+                QSqlQuery q(db);
+                if (!q.prepare(SQL_DOCTORS_FOR_UI) || !q.exec()) {
+                    qWarning() << "[loadDoctorList] sql error:" << q.lastError().text();
+                    sendJson(sock, {
+                                 {"type", "loadDoctorList"},
+                                 {"success", false},
+                                 {"error",  q.lastError().text()}
+                             });
+                    return;
+                }
+
+                QJsonArray doctors;
+                // doctors.reserve(q.size() > 0 ? q.size() : 8);
+
+                while (q.next()) {
+                    const int      doctorId  = q.value("doctor_id").toInt();
+                    const QString  name      = q.value("name").toString();
+                    const QString  title     = q.value("title").toString();
+                    const QString  dept      = q.value("department_name").toString();
+                    const QString  specialty = q.value("specialty").toString();   // 例如："擅长：..."
+                    const QString  exp       = q.value("experience").toString();  // 例如："25年"
+
+                    // 仅返回表里有的字段；若 UI 还需 schedule/education/awards，可另建表或另一个接口
+                    QJsonObject item{
+                        {"doctor_id",  doctorId},
+                        {"name",       name},
+                        {"title",      title},
+                        {"department", dept},
+                        {"specialty",  specialty},
+                        {"experience", exp}
+                    };
+                    doctors.append(item);
+
+                    qDebug().noquote() << QString("[Doctor] #%1 %2 %3 %4 %5")
+                                          .arg(doctorId)
+                                          .arg(name, title, dept, exp);
+                }
+
+                // 响应仍然用 "loadDoctorList"（与你的 Widget 判断一致）
+                sendJson(sock, {
+                             {"type",    "loadDoctorList"},
+                             {"success", true},
+                             {"count",   static_cast<int>(doctors.size())},
+                             {"doctors", doctors}
+                         });
+            }
+
+            // ======= 修正后的 handleonPurchaseClicked，已改为成员函数 + 去掉 makeError =======
+            void Widget::handleonPurchaseClicked(QTcpSocket *sock, const QJsonObject &obj)
+            {
+                const int patientId = obj.value("patient_id").toInt(-1);
+                const int reqOid    = obj.value("order_id").toInt(0);
+                const QJsonArray cart = obj.value("cart").toArray();
+
+                if (patientId < 0) { sendError(sock, "onPurchaseClicked", "invalid patient_id"); return; }
+                if (cart.isEmpty()) { sendError(sock, "onPurchaseClicked", "cart is empty"); return; }
+
+                QSqlDatabase db = QSqlDatabase::database();
+                if (!db.isValid() || !db.isOpen()) {
+                    qWarning() << "[onPurchaseClicked] database not open";
+                    sendError(sock, "onPurchaseClicked", "database not open");
+                    return;
+                }
+
+                if (!db.transaction()) {
+                    qWarning() << "[onPurchaseClicked] begin transaction failed:" << db.lastError().text();
+                }
+
+                int oid = 0;
+
+                if (reqOid > 0) {
+                    QSqlQuery chk(db);
+                    const char *sql_chk = R"SQL(
+                                          SELECT order_id FROM orders
+                                          WHERE order_id = :oid AND patient_id = :p AND status = 'created'
+                                          LIMIT 1
+                                          )SQL";
+                    if (!chk.prepare(sql_chk)) {
+                        const QString err = chk.lastError().text();
+                        qWarning() << "[onPurchaseClicked] chk prepare failed:" << err;
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("sql prepare failed(chk): %1").arg(err));
+                        return;
+                    }
+                    chk.bindValue(":oid", reqOid);
+                    chk.bindValue(":p",   patientId);
+                    if (!chk.exec()) {
+                        const QString err = chk.lastError().text();
+                        qWarning() << "[onPurchaseClicked] chk exec failed:" << err;
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("sql exec failed(chk): %1").arg(err));
+                        return;
+                    }
+                    if (chk.next()) {
+                        oid = reqOid;
+                    }
+                }
+
+                if (oid == 0) {
+                    QSqlQuery qi(db);
+                    const char *sql_new = R"SQL(
+                                          INSERT INTO orders (patient_id, status, total_amount, discount, created_at)
+                                          VALUES (:p, 'created', 0, 0, CURRENT_TIMESTAMP)
+                                          )SQL";
+                    if (!qi.prepare(sql_new)) {
+                        const QString err = qi.lastError().text();
+                        qWarning() << "[onPurchaseClicked] new order prepare failed:" << err;
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("prepare failed(new order): %1").arg(err));
+                        return;
+                    }
+                    qi.bindValue(":p", patientId);
+                    if (!qi.exec()) {
+                        const QString err = qi.lastError().text();
+                        qWarning() << "[onPurchaseClicked] new order exec failed:" << err;
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("exec failed(new order): %1").arg(err));
+                        return;
+                    }
+                    QVariant v = qi.lastInsertId();
+                    oid = v.isValid() ? v.toInt() : 0;
+                    if (oid <= 0) {
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", "cannot get new order_id");
+                        return;
+                    }
+                }
+
+                QSqlQuery qFindMed(db);
+                if (!qFindMed.prepare(R"SQL(
+                                      SELECT name, price FROM medicines WHERE medicine_id = :mid LIMIT 1
+                                      )SQL")) {
+                    const QString err = qFindMed.lastError().text();
+                    qWarning() << "[onPurchaseClicked] find med prepare failed:" << err;
+                    db.rollback();
+                    sendError(sock, "onPurchaseClicked", QString("prepare failed(find med): %1").arg(err));
+                    return;
+                }
+
+                QSqlQuery qInsItem(db);
+                if (!qInsItem.prepare(R"SQL(
+                                      INSERT INTO order_items
+                                      (order_id, item_type, item_name, medicine_id, quantity, unit_price, amount)
+                                      VALUES
+                                      (:oid, 'drug', :iname, :mid, :qty, :uprice, :amount)
+                                      )SQL")) {
+                    const QString err = qInsItem.lastError().text();
+                    qWarning() << "[onPurchaseClicked] insert item prepare failed:" << err;
+                    db.rollback();
+                    sendError(sock, "onPurchaseClicked", QString("prepare failed(insert item): %1").arg(err));
+                    return;
+                }
+
+                QJsonArray itemsOut;
+                double total = 0.0;
+
+                for (const QJsonValue &v : cart) {
+                    const QJsonObject it = v.toObject();
+                    const int mid = it.value("medicine_id").toInt(-1);
+                    const int qty = it.value("qty").toInt(0);
+                    double unitPrice = it.value("unit_price").toDouble(-1.0);
+
+                    if (mid < 0 || qty <= 0) {
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", "invalid cart item (medicine_id/qty)");
+                        return;
+                    }
+
+                    qFindMed.bindValue(":mid", mid);
+                    if (!qFindMed.exec()) {
+                        const QString err = qFindMed.lastError().text();
+                        qWarning() << "[onPurchaseClicked] find med exec failed:" << err;
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("exec failed(find med): %1").arg(err));
+                        return;
+                    }
+                    if (!qFindMed.next()) {
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("medicine not found: id=%1").arg(mid));
+                        return;
+                    }
+                    const QString medName = qFindMed.value("name").toString();
+                    const double  dbPrice = qFindMed.value("price").toDouble();
+                    if (unitPrice < 0.0) unitPrice = dbPrice;
+
+                    const double amount = unitPrice * static_cast<double>(qty);
+                    total += amount;
+
+                    const QString itemName = QStringLiteral("药品-%1").arg(medName);
+                    qInsItem.bindValue(":oid",    oid);
+                    qInsItem.bindValue(":iname",  itemName);
+                    qInsItem.bindValue(":mid",    mid);
+                    qInsItem.bindValue(":qty",    qty);
+                    qInsItem.bindValue(":uprice", unitPrice);
+                    qInsItem.bindValue(":amount", amount);
+                    if (!qInsItem.exec()) {
+                        const QString err = qInsItem.lastError().text();
+                        qWarning() << "[onPurchaseClicked] insert item exec failed:" << err;
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("exec failed(insert item): %1").arg(err));
+                        return;
+                    }
+
+                    itemsOut.append(QJsonObject{
+                                        {"medicine_id", mid},
+                                        {"name",        medName},
+                                        {"qty",         qty},
+                                        {"unit_price",  unitPrice},
+                                        {"amount",      amount}
+                                    });
+                }
+
+                {
+                    QSqlQuery qUpd(db);
+                    if (!qUpd.prepare(R"SQL(
+                                      UPDATE orders SET total_amount = COALESCE(total_amount,0) + :delta WHERE order_id = :oid
+                                      )SQL")) {
+                        const QString err = qUpd.lastError().text();
+                        qWarning() << "[onPurchaseClicked] update order prepare failed:" << err;
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("prepare failed(update order): %1").arg(err));
+                        return;
+                    }
+                    qUpd.bindValue(":delta", total);
+                    qUpd.bindValue(":oid",   oid);
+                    if (!qUpd.exec()) {
+                        const QString err = qUpd.lastError().text();
+                        qWarning() << "[onPurchaseClicked] update order exec failed:" << err;
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("exec failed(update order): %1").arg(err));
+                        return;
+                    }
+                }
+
+                QString orderCode; double totalAmount=0.0; double discount=0.0;
+                {
+                    QSqlQuery qSum(db);
+                    const char *sqlSum = R"SQL(
+                                         SELECT
+                                         o.total_amount,
+                                         o.discount,
+                                         ('PO' || strftime('%Y%m%d', o.created_at) || printf('%06d', o.order_id)) AS order_code
+                                         FROM orders o WHERE o.order_id = :oid LIMIT 1
+                                         )SQL";
+                    if (!qSum.prepare(sqlSum)) {
+                        const QString err = qSum.lastError().text();
+                        qWarning() << "[onPurchaseClicked] sum prepare failed:" << err;
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("prepare failed(sum): %1").arg(err));
+                        return;
+                    }
+                    qSum.bindValue(":oid", oid);
+                    if (!qSum.exec() || !qSum.next()) {
+                        const QString err = qSum.lastError().text();
+                        qWarning() << "[onPurchaseClicked] sum exec/next failed:" << err;
+                        db.rollback();
+                        sendError(sock, "onPurchaseClicked", QString("exec failed(sum): %1").arg(err));
+                        return;
+                    }
+                    totalAmount = qSum.value("total_amount").toDouble();
+                    discount    = qSum.value("discount").toDouble();
+                    orderCode   = qSum.value("order_code").toString();
+                }
+
+                if (!db.commit()) {
+                    const QString err = db.lastError().text();
+                    qWarning() << "[onPurchaseClicked] commit failed:" << err;
+                    sendError(sock, "onPurchaseClicked", QString("commit failed: %1").arg(err));
+                    return;
+                }
+
+                sendJson(sock, {
+                             {"type",          "onPurchaseClicked"},
+                             {"success",       true},
+                             {"order_id",      oid},
+                             {"order_code",    orderCode},
+                             {"total_amount",  totalAmount},
+                             {"discount",      discount},
+                             {"count",         static_cast<int>(itemsOut.size())},
+                             {"items",         itemsOut}
+                         });
+            }
+
+            void Widget::handleprocessPayment(QTcpSocket *sock, const QJsonObject &obj)
+            {
+                // 0) 读取参数 + 校验
+                const int     orderId = obj.value("order_id").toInt(-1);
+                QString       method  = obj.value("method").toString().trimmed();      // 例：WeChat/Alipay/Cash
+                const double  amount  = obj.value("amount").toDouble(-1.0);
+                QString       status  = obj.value("status").toString("success");       // success/pending/failed
+                const QString txref   = obj.value("transaction_ref").toString();
+
+                if (orderId <= 0) { sendError(sock, "processPayment", "invalid order_id"); return; }
+                if (method.isEmpty()) { method = "Unknown"; }          // 不强制失败
+                if (amount <= 0.0) { sendError(sock, "processPayment", "invalid amount"); return; }
+                if (status != "success" && status != "pending" && status != "failed") status = "success";
+
+                // 1) 打开数据库
+                QSqlDatabase db = QSqlDatabase::database();
+                if (!db.isValid() || !db.isOpen()) {
+                    qWarning() << "[processPayment] database not open";
+                    sendError(sock, "processPayment", "database not open");
+                    return;
+                }
+
+                // 2) 事务
+                if (!db.transaction()) {
+                    qWarning() << "[processPayment] begin tx failed:" << db.lastError().text();
+                    // 不中断，继续
+                }
+
+                // 3) 检查订单存在
+                {
+                    QSqlQuery chk(db);
+                    static const char* sql_chk =
+                            "SELECT order_id FROM orders WHERE order_id=:id LIMIT 1";
+                    if (!chk.prepare(sql_chk)) { db.rollback(); sendError(sock, "processPayment", "数据库错误(prepare chk)"); return; }
+                    chk.bindValue(":id", orderId);
+                    if (!chk.exec() || !chk.next()) { db.rollback(); sendError(sock, "processPayment", "订单不存在"); return; }
+                }
+
+                // 4) 插入 payment（触发器可更新订单状态；若无触发器，后面我们会自行汇总）
+                int paymentId = -1;
+                {
+                    QSqlQuery ins(db);
+                    static const char* sql_ins =
+                            "INSERT INTO payments(order_id, method, amount, status, transaction_ref) "
+                            "VALUES(:o,:m,:a,:s,:t)";
+                    if (!ins.prepare(sql_ins))  { db.rollback(); sendError(sock, "processPayment", "数据库错误(prepare ins)"); return; }
+                    ins.bindValue(":o", orderId);
+                    ins.bindValue(":m", method);
+                    ins.bindValue(":a", amount);
+                    ins.bindValue(":s", status);
+                    ins.bindValue(":t", txref.isEmpty()? QVariant(QVariant::String) : QVariant(txref));
+
+                    if (!ins.exec()) { db.rollback(); sendError(sock, "processPayment", "支付写入失败"); return; }
+
+                    // lastInsertId 更通用；如需 SQLite 兼容也可备用查询 last_insert_rowid()
+                    const QVariant lid = ins.lastInsertId();
+                    if (lid.isValid()) {
+                        paymentId = lid.toInt();
+                    } else {
+                        QSqlQuery rid(db);
+                        if (rid.exec("SELECT last_insert_rowid()") && rid.next())
+                            paymentId = rid.value(0).toInt();
+                    }
+                }
+
+                // 5) 汇总订单金额与已付
+                double total = 0.0, paid = 0.0; QString orderStatus;
+                {
+                    QSqlQuery qp(db);
+                    static const char* sql_paid =
+                            "SELECT COALESCE(SUM(amount),0) FROM payments WHERE order_id=:o AND status='success'";
+                    qp.prepare(sql_paid); qp.bindValue(":o", orderId);
+                    if (qp.exec() && qp.next()) paid = qp.value(0).toDouble();
+
+                    QSqlQuery qo(db);
+                    static const char* sql_ord =
+                            "SELECT status, total_amount FROM orders WHERE order_id=:o LIMIT 1";
+                    qo.prepare(sql_ord); qo.bindValue(":o", orderId);
+                    if (qo.exec() && qo.next()) {
+                        orderStatus = qo.value("status").toString();
+                        total       = qo.value("total_amount").toDouble();
+                    }
+                }
+                const double due = (total - paid) > 0.0 ? (total - paid) : 0.0;
+
+                QJsonArray items;
+                {
+                    QSqlQuery qi(db);
+                    static const char* sql_items =
+                            "SELECT medicine_id, item_name, quantity, unit_price, amount "
+                            "FROM order_items WHERE order_id=:o ORDER BY rowid";
+                    if (qi.prepare(sql_items)) {
+                        qi.bindValue(":o", orderId);
+                        if (qi.exec()) {
+                            while (qi.next()) {
+                                items.append(QJsonObject{
+                                                 {"medicine_id", qi.value("medicine_id").toInt()},
+                                                 {"name",        qi.value("item_name").toString()},
+                                                 {"qty",         qi.value("quantity").toInt()},
+                                                 {"unit_price",  qi.value("unit_price").toDouble()},
+                                                 {"amount",      qi.value("amount").toDouble()}
+                                             });
+                            }
+                        }
+                    }
+                }
+
+                if (!db.commit()) {
+                    const QString err = db.lastError().text();
+                    qWarning() << "[processPayment] commit failed:" << err;
+                    sendError(sock, "processPayment", QString("commit failed: %1").arg(err));
+                    return;
+                }
+
+                sendJson(sock, QJsonObject{
+                             {"type","processPayment"},
+                             {"success", status=="success"},
+                             {"message", status=="success" ? "支付已记录"
+                              : (status=="pending" ? "支付待确认" : "支付失败")},
+                             {"payment", QJsonObject{
+                                  {"payment_id", paymentId},
+                                  {"order_id",   orderId},
+                                  {"method",     method},
+                                  {"amount",     amount},
+                                  {"status",     status},
+                                  {"transaction_ref", txref}
+                              }},
+                             {"order", QJsonObject{
+                                  {"order_id",     orderId},
+                                  {"status",       orderStatus},
+                                  {"total_amount", total},
+                                  {"paid_amount",  paid},
+                                  {"due_amount",   due}
+                              }},
+                             {"items", items}
+                         });
+            }
+
+            // bu yao dong xia mian de, yijing ok
+            void Widget::handleGetPatientProfile(QTcpSocket *sock, const QJsonObject &obj)
+            {
+                const int pid = obj.value("patient_id").toInt(-1);
+                if (pid <= 0) {
+                    sendJson(sock, {{"type","patient_profile_result"},{"success",false},{"message","参数错误：缺少 patient_id"}});
+                    return;
+                }
+
+                QSqlDatabase db = QSqlDatabase::database();
+                QSqlQuery q(db);
+
+                const char *sql = R"SQL(
+                                  SELECT patient_id, username, name, gender, birth_date, id_number,
+                                  blood_type, mobile, email, emergency_contact, emergency_phone,
+                                  insurance_type, insurance_card, allergies, history, created_at
+                                  FROM patients WHERE patient_id=:id LIMIT 1
+                                  )SQL";
+                if (!q.prepare(sql)) {
+                    qWarning() << "[get_profile] prepare failed:" << q.lastError().text();
+                    sendJson(sock, {{"type","patient_profile_result"},{"success",false},{"message","数据库错误(prepare)"}});
+                    return;
+                }
+                q.bindValue(":id", pid);
+                if (!q.exec()) {
+                    qWarning() << "[get_profile] exec error:" << q.lastError().text();
+                    sendJson(sock, {{"type","patient_profile_result"},{"success",false},{"message","数据库错误"}});
+                    return;
+                }
+                if (!q.next()) {
+                    sendJson(sock, {{"type","patient_profile_result"},{"success",false},{"message","未找到该患者"}});
+                    return;
+                }
+
+                QJsonObject profile{
+                    {"patient_id",        q.value("patient_id").toInt()},
+                    {"username",          q.value("username").toString()},
+                    {"name",              q.value("name").toString()},
+                    {"gender",            q.value("gender").toString()},
+                    {"birth_date",        q.value("birth_date").toString()},        // "YYYY-MM-DD"
+                    {"id_number",         q.value("id_number").toString()},
+                    {"blood_type",        q.value("blood_type").toString()},        // 'A'/'B'/'AB'/'O'/'其他'
+                    {"mobile",            q.value("mobile").toString()},
+                    {"email",             q.value("email").toString()},
+                    {"emergency_contact", q.value("emergency_contact").toString()},
+                    {"emergency_phone",   q.value("emergency_phone").toString()},
+                    {"insurance_type",    q.value("insurance_type").toString()},
+                    {"insurance_card",    q.value("insurance_card").toString()},
+                    {"allergies",         q.value("allergies").toString()},
+                    {"history",           q.value("history").toString()},
+                    {"created_at",        q.value("created_at").toString()}
+                };
+
+                sendJson(sock, {
+                             {"type","patient_profile_result"},
+                             {"success",true},
+                             {"profile",profile}
+                         });
+            }
+
+            void Widget::handleUpdatePatientProfile(QTcpSocket *sock, const QJsonObject &obj)
+            {
+                const int pid = obj.value("patient_id").toInt(-1);
+                if (pid <= 0) {
+                    sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","参数错误：缺少 patient_id"}});
+                    return;
+                }
+
+                // 允许更新的字段：JSON key -> DB 列名（相同名直接写）
+                const QMap<QString, QString> allow {
+                    {"gender","gender"},
+                    {"birth_date","birth_date"},                 // "YYYY-MM-DD"
+                    {"blood_type","blood_type"},                 // A/B/AB/O/其他
+                    {"mobile","mobile"},
+                    {"emergency_contact","emergency_contact"},
+                    {"emergency_phone","emergency_phone"},
+                    {"insurance_type","insurance_type"},
+                    {"allergies","allergies"},
+                    {"history","history"}
+                };
+
+                // 收集需要更新的列
+                QStringList sets;
+                QMap<QString, QVariant> binds;
+
+                for (auto it = allow.constBegin(); it != allow.constEnd(); ++it) {
+                    if (obj.contains(it.key())) {
+                        const auto v = obj.value(it.key());
+                        // 简单校验（可按需加严）
+                        if (it.key()=="gender") {
+                            const QString g = v.toString().trimmed();
+                            if (!QStringList({"男","女","其他"}).contains(g)) continue; // 非法值忽略
+                            binds[":"+it.key()] = g;
+                        } else if (it.key()=="blood_type") {
+                            const QString bt = v.toString().trimmed();
+                            if (!QStringList({"A","B","AB","O","其他"}).contains(bt)) continue;
+                            binds[":"+it.key()] = bt;
+                        } else if (it.key()=="birth_date") {
+                            binds[":"+it.key()] = v.toString().trimmed(); // 交由后端保持字符串格式
+                        } else {
+                            binds[":"+it.key()] = v.toVariant();
+                        }
+                        sets << QString("%1=:%2").arg(it.value(), it.key());
+                    }
+                }
+
+                if (sets.isEmpty()) {
+                    sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","无可更新字段"}});
+                    return;
+                }
+
+                QSqlDatabase db = QSqlDatabase::database();
+                if (!db.transaction()) {
+                    qWarning() << "[update_profile] begin tx failed:" << db.lastError().text();
+                    sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","数据库错误(事务)"}});
+                    return;
+                }
+
+                QSqlQuery q(db);
+                const QString sql = "UPDATE patients SET " + sets.join(", ") + " WHERE patient_id=:pid";
+                if (!q.prepare(sql)) {
+                    qWarning() << "[update_profile] prepare failed:" << q.lastError().text() << " sql=" << sql;
+                    db.rollback();
+                    sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","数据库错误(prepare)"}});
+                    return;
+                }
+
+                // 绑定
+                for (auto it = binds.constBegin(); it != binds.constEnd(); ++it) q.bindValue(it.key(), it.value());
+                q.bindValue(":pid", pid);
+
+                if (!q.exec()) {
+                    qWarning() << "[update_profile] exec error:" << q.lastError().text();
+                    db.rollback();
+                    sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","更新失败"}});
+                    return;
+                }
+
+                if (!db.commit()) {
+                    qWarning() << "[update_profile] commit failed:" << db.lastError().text();
+                    db.rollback();
+                    sendJson(sock, {{"type","update_patient_profile_result"},{"success",false},{"message","数据库错误(commit)"}});
+                    return;
+                }
+
+                sendJson(sock, {{"type","update_patient_profile_result"},{"success",true},{"message","已保存"}});
+            }
+
+            void Widget::handleLogin(QTcpSocket *sock, const QJsonObject &obj)
+            {
+                const QString username = obj.value("username").toString().trimmed();
+                const QString password = obj.value("password").toString();
+                const QString role     = obj.value("role").toString().trimmed(); // 前端字段是 role
+
+                if (username.isEmpty() || password.isEmpty() ||
+                        (role != "patient" && role != "doctor" && role != "admin")) {
+                    sendJson(sock, {{"type","login_result"},{"success",false},{"message","参数不完整/角色非法"}});
+                    return;
+                }
+
+                QSqlDatabase db = QSqlDatabase::database();
+                qDebug() << "[login] driver =" << db.driverName()
+                         << " username =" << username
+                         << " role =" << role;
+
+                QSqlQuery q(db);                       // 显式绑定到当前连接
+                const char *sql =
+                        "SELECT account_id, password_hash, role, patient_id, doctor_id "
+                        "FROM accounts "
+                        "WHERE username=:u AND role=:r AND is_active=1 "
+                        "LIMIT 1";
+
+                // 1) 先检查 prepare 是否成功
+                if (!q.prepare(sql)) {
+                    qWarning() << "[login] prepare failed:" << q.lastError().text()
+                               << " query=" << sql;
+                    sendJson(sock, {{"type","login_result"},{"success",false},{"message","数据库错误(prepare)"}});
+                    return;
+                }
+
+                // 2) 绑定命名参数（不要和 ? 混用）
+                q.bindValue(":u", username);
+                q.bindValue(":r", role);
+
+                // 打印已绑定的键，确认确实绑定了 2 个
+                const auto bvs = q.boundValues();
+                qDebug() << "[login] bound keys =" << bvs.keys();
+
+                // 3) 执行
+                if (!q.exec()) {
+                    qWarning() << "[login] exec error:" << q.lastError().text()
+                               << " lastQuery=" << q.lastQuery()
+                               << " boundKeys=" << bvs.keys();
+                    sendJson(sock, {{"type","login_result"},{"success",false},{"message","数据库错误(exec)"}});
+                    return;
+                }
+
+                if (!q.next()) {
+                    sendJson(sock, {{"type","login_result"},{"success",false},{"message","账号不存在或已停用"}});
+                    return;
+                }
+
+                const QString stored = q.value("password_hash").toString(); // 你现在用明文就直接比
+                if (stored != password) {
+                    sendJson(sock, {{"type","login_result"},{"success",false},{"message","密码错误"}});
+                    return;
+                }
+
+                QJsonObject payload{
+                    {"type","login_result"},
+                    {"success",true},
+                    {"message","登录成功"},
+                    {"role", role}
+                };
+
+                if (role == "patient") {
+                    const int pid = q.value("patient_id").toInt();
+                    QSqlQuery qp(db);
+                    qp.prepare("SELECT name, username FROM patients WHERE patient_id=:id");
+                    qp.bindValue(":id", pid);
+                    if (qp.exec() && qp.next()) {
+                        payload.insert("patient_id", pid);
+                        payload.insert("name", qp.value("name").toString());
+                        payload.insert("nickname", qp.value("username").toString());
+                    }
+                } else if (role == "doctor") {
+                    const int did = q.value("doctor_id").toInt();
+                    QSqlQuery qd(db);
+                    qd.prepare(
+                                "SELECT d.name, d.title, dep.name AS department "
+                                "FROM doctors d JOIN departments dep ON dep.department_id=d.department_id "
+                                "WHERE d.doctor_id=:id"
+                                );
+                    qd.bindValue(":id", did);
+                    if (qd.exec() && qd.next()) {
+                        payload.insert("doctor_id", did);
+                        payload.insert("name", qd.value("name").toString());
+                        payload.insert("title", qd.value("title").toString());
+                        payload.insert("department", qd.value("department").toString());
+                    }
+                }
+
+                sendJson(sock, payload);
+            }
+
+            void Widget::handleRegister(QTcpSocket *sock, const QJsonObject &obj)
+            {
+                qDebug() << "[register] raw json =" << obj;
+
+                const QString username = obj.value("username").toString().trimmed();
+                const QString password = obj.value("password").toString();
+                const QString role     = obj.value("user_type").toString().trimmed();   // "patient"/"doctor"
+                const QString name     = obj.value("name").toString().trimmed();
+                const QString phone    = obj.value("phone").toString().trimmed();
+                const QString email    = obj.value("email").toString().trimmed();
+                const QString department = obj.value("department").toString().trimmed();
+
+                if (username.isEmpty() || password.isEmpty() ||
+                        (role != "patient" && role != "doctor")) {
+                    sendJson(sock, {{"type","register_result"},{"success",false},{"message","仅支持患者或医生注册"}});
+                    return;
+                }
+
+                QSqlDatabase db = QSqlDatabase::database();
+                if (!db.transaction()) {
+                    qWarning() << "[register] begin transaction failed:" << db.lastError().text();
+                    sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}});
+                    return;
+                }
+
+                // 账户重名检查（accounts.username 唯一）
+                {
+                    QSqlQuery q(db);
+                    const char *sql = "SELECT 1 FROM accounts WHERE username=:u LIMIT 1";
+                    q.prepare(sql);
+                    q.bindValue(":u", username);
+                    if (!q.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}}); return; }
+                    if (q.next()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","用户名已存在"}}); return; }
+                }
+
+                if (role == "patient") {
+                    int pid = -1;
+                    {   // patients
+                        QSqlQuery ins(db);
+                        ins.prepare("INSERT INTO patients(username, name, mobile, email) VALUES(:u,:n,:m,:e)");
+                        ins.bindValue(":u", username);
+                        ins.bindValue(":n", name.isEmpty()? username : name);
+                        ins.bindValue(":m", phone);
+                        ins.bindValue(":e", email);
+                        if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建患者失败"}}); return; }
+                        pid = ins.lastInsertId().toInt();
+                    }
+                    {   // accounts
+                        QSqlQuery ins(db);
+                        ins.prepare("INSERT INTO accounts(username, password_hash, role, patient_id, is_active) VALUES(:u,:p,'patient',:pid,1)");
+                        ins.bindValue(":u", username);
+                        ins.bindValue(":p", password);
+                        ins.bindValue(":pid", pid);
+                        if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建账户失败"}}); return; }
+                    }
+                    if (!db.commit()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}}); return; }
+
+                    sendJson(sock, {{"type","register_result"},{"success",true},{"message","注册成功"},{"role","patient"},{"patient_id",pid},{"name", name.isEmpty()?username:name}});
+                    return;
+                }
+
+                // 医生分支
+                if (role == "doctor") {
+                    if (department.isEmpty()) {
+                        db.rollback();
+                        sendJson(sock, {{"type","register_result"},{"success",false},{"message","医生注册需选择科室"}});
+                        return;
+                    }
+
+                    int depId = -1;
+                    {   // 找到或创建科室
+                        QSqlQuery q(db);
+                        q.prepare("SELECT department_id FROM departments WHERE name=:n LIMIT 1");
+                        q.bindValue(":n", department);
+                        if (!q.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误(查科室)"}}); return; }
+                        if (q.next()) depId = q.value(0).toInt();
+                        else {
+                            QSqlQuery ins(db);
+                            ins.prepare("INSERT INTO departments(name) VALUES(:n)");
+                            ins.bindValue(":n", department);
+                            if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建科室失败"}}); return; }
+                            depId = ins.lastInsertId().toInt();
+                        }
+                    }
+
+                    int did = -1;
+                    {   // 插入 doctors（最少字段：name/title/department_id）
+                        QSqlQuery ins(db);
+                        ins.prepare("INSERT INTO doctors(name, title, department_id) VALUES(:n, :t, :dep)");
+                        ins.bindValue(":n", name.isEmpty()? username : name);
+                        ins.bindValue(":t", "住院医师");            // 默认职称，后续可在资料页修改
+                        ins.bindValue(":dep", depId);
+                        if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建医生失败"}}); return; }
+                        did = ins.lastInsertId().toInt();
+                    }
+
+                    {   // 插入 accounts（role=doctor）
+                        QSqlQuery ins(db);
+                        ins.prepare("INSERT INTO accounts(username, password_hash, role, doctor_id, is_active) VALUES(:u, :p, 'doctor', :did, 1)");
+                        ins.bindValue(":u", username);
+                        ins.bindValue(":p", password);
+                        ins.bindValue(":did", did);
+                        if (!ins.exec()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","创建账户失败"}}); return; }
+                    }
+
+                    if (!db.commit()) { db.rollback(); sendJson(sock, {{"type","register_result"},{"success",false},{"message","数据库错误"}}); return; }
+
+                    sendJson(sock, {{"type","register_result"},{"success",true},{"message","注册成功"},{"role","doctor"},{"doctor_id",did},{"name", name.isEmpty()?username:name}});
+                    return;
+                }
+            }
+
+            void Widget::sendJson(QTcpSocket *sock, const QJsonObject &obj)
+            {
+                QJsonDocument doc(obj);
+                QByteArray payload = doc.toJson(QJsonDocument::Compact);
+                payload.append('\n'); // 按行协议
+                sock->write(payload);
+                sock->flush();
+            }
+
+            void Widget::sendError(QTcpSocket *sock, const QString &type, const QString &msg)
+            {
+                sendJson(sock, QJsonObject{
+                             {"type", type},
+                             {"success", false},
+                             {"message", msg}
+                         });
+            }

@@ -8,6 +8,11 @@
 #include <QNetworkInterface>
 #include <QMap>
 #include <QJsonObject>
+#include <QDate>
+#include <QTime>
+#include <QDateTime>
+#include <algorithm>   // 你用了 std::max
+#include <QVariant>    // 你用到了 QVariant(...) 绑定可空值（可选，但建议）
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class Widget; }
@@ -39,7 +44,10 @@ private:
     QMap<QTcpSocket*, QByteArray> recvBuf;
 
     void init();
-
+    //
+    void handledoctorContactsLoaded(QTcpSocket *sock, const QJsonObject &obj);
+        void handlechatHistoryLoaded(QTcpSocket *sock, const QJsonObject &obj);
+        void handlemessageSent(QTcpSocket *sock, const QJsonObject &obj);
     // --- dispatcher & handlers ---
     void handleMessage(QTcpSocket *sock, const QJsonObject &obj);
     void handleLogin(QTcpSocket *sock, const QJsonObject &obj);
@@ -60,6 +68,24 @@ private:
     // --- reply helpers ---
     void sendJson(QTcpSocket *sock, const QJsonObject &obj);
     void sendError(QTcpSocket *sock, const QString &type, const QString &msg);
+    // xiamian gaoneng
+    // ==== 通用：加载/修改(创建) 模板 ====
+    // 患者列表
+    void handleLoadPatientList(QTcpSocket *sock, const QJsonObject &obj);
+
+    // 病历
+    void handleLoadMedicalRecord(QTcpSocket *sock, const QJsonObject &obj);
+    void handleSaveMedicalRecord(QTcpSocket *sock, const QJsonObject &obj);
+
+    // 医嘱
+    void handleLoadMedicalOrders(QTcpSocket *sock, const QJsonObject &obj);
+    void handleSaveMedicalOrders(QTcpSocket *sock, const QJsonObject &obj);
+
+    // 考勤 / 请假
+    void handleLoadAttendanceToday(QTcpSocket *sock, const QJsonObject &obj);
+    void handleClockEvent(QTcpSocket *sock, const QJsonObject &obj);
+    void handleSubmitLeave(QTcpSocket *sock, const QJsonObject &obj);
+    void handleLoadLeaveRecords(QTcpSocket *sock, const QJsonObject &obj);
 };
 
 #endif // WIDGET_H
